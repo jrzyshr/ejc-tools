@@ -28,6 +28,7 @@ ejc-tools/
 │   └── utils/
 │       ├── nj_geodata.py          # TIGER/Line shapefile helpers
 │       └── fonts/                 # Montserrat, etc.
+├── docs/                          # Tool documentation (linked from README)
 ├── data/
 │   ├── towns.csv                  # Master list of 564 NJ municipalities
 │   ├── tl_2025_34_cousub/         # TIGER/Line shapefiles (gitignored)
@@ -63,6 +64,20 @@ python scripts/generate_border.py --all
 # Generate labeled maps for all towns
 python scripts/generate_labeled_map.py --all
 ```
+
+## Documentation
+
+Detailed usage guides and edge cases for each tool:
+
+| Tool | Description |
+|------|-------------|
+| [download_tiger.py](docs/download-tiger.md) | Download Census TIGER/Line shapefiles for NJ |
+| [generate_towns_csv.py](docs/generate-towns-csv.md) | Generate the master `towns.csv` from Wikipedia |
+| [generate_border.py](docs/generate-border.md) | Generate red town border outlines on transparent PNGs |
+| [seed_issues.py](docs/seed-issues.md) | Bulk-create GitHub Issues from `towns.csv` |
+| [nj_geodata.py](docs/nj-geodata.md) | Shared geographic data utility library |
+
+> Documentation for future tools will be added to the [`docs/`](docs/) folder and linked here.
 
 ## Pipeline Stages (GitHub Project Board)
 
