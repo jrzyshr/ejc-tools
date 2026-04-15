@@ -76,6 +76,9 @@ Detailed usage guides and edge cases for each tool:
 | [generate_border.py](docs/generate-border.md) | Generate red town border outlines on transparent PNGs |
 | [generate_labeled_map.py](docs/generate-labeled-map.md) | Generate labeled municipality maps with neighbors |
 | [seed_issues.py](docs/seed-issues.md) | Bulk-create GitHub Issues from `towns.csv` |
+| [fetch_wikipedia.py](docs/fetch-wikipedia.md) | Batch-fetch Wikipedia articles for all NJ municipalities |
+| [extract_research.py](docs/extract-research.md) | LLM-powered research brief extraction from Wikipedia |
+| [check_thin_articles.py](docs/check-thin-articles.md) | Flag thin/missing Wikipedia articles for manual research |
 | [nj_geodata.py](docs/nj-geodata.md) | Shared geographic data utility library |
 
 > Documentation for future tools will be added to the [`docs/`](docs/) folder and linked here.

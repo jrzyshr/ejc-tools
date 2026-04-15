@@ -69,6 +69,22 @@
     "output_dpi": 200
   },
 
+  "wikipedia": {
+    "rate_limit_ms": 200,
+    "thin_article_threshold": 2000,
+    "cache_dir": "data/wikipedia_cache"
+  },
+
+  "research": {
+    "default_backend": "openai",
+    "openai_model": "gpt-4o",
+    "anthropic_model": "claude-sonnet-4-20250514",
+    "llamacpp_server_url": "http://localhost:8080/v1/chat/completions",
+    "llamacpp_model_path": null,
+    "max_article_length": 30000,
+    "output_dir": "data/research"
+  },
+
   "github": {
     "repo": "",
     "project_number": null
