@@ -74,6 +74,7 @@ Detailed usage guides and edge cases for each tool:
 | [download_tiger.py](docs/download-tiger.md) | Download Census TIGER/Line shapefiles for NJ |
 | [generate_towns_csv.py](docs/generate-towns-csv.md) | Generate the master `towns.csv` from Wikipedia |
 | [generate_border.py](docs/generate-border.md) | Generate red town border outlines on transparent PNGs |
+| [generate_labeled_map.py](docs/generate-labeled-map.md) | Generate labeled municipality maps with neighbors |
 | [seed_issues.py](docs/seed-issues.md) | Bulk-create GitHub Issues from `towns.csv` |
 | [nj_geodata.py](docs/nj-geodata.md) | Shared geographic data utility library |
 
