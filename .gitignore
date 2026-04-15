@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Generated assets (large files, keep on NAS)
+assets/
+
+# TIGER/Line shapefiles (large, downloaded separately)
+data/tl_*
+data/*.shp
+data/*.shx
+data/*.dbf
+data/*.prj
+data/*.cpg
+data/*.xml
+
+# Wikipedia cache (regenerable)
+data/wikipedia_cache/
+
+# Research briefs (regenerable)
+data/research/
+
+# Audio intermediates
+*.wav.bak
+*_cleaned.wav
+*_normalized.wav
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+*.env.local
+
+# SQLite database (local tracking)
+data/*.db
+
+# Whisper models (downloaded separately)
+models/
+*.bin

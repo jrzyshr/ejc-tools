@@ -1,0 +1,76 @@
+{
+  "project_name": "EatJerseyChallenge",
+  "hashtag": "#eatjerseychallenge",
+  "total_towns": 564,
+
+  "paths": {
+    "nas_asset_root": "/Volumes/NAS/EatJerseyChallenge",
+    "asset_folder_pattern": "{town_number} - {town_name}",
+    "tiger_shapefile": "data/tl_2025_34_cousub/tl_2025_34_cousub.shp"
+  },
+
+  "video": {
+    "resolution": [1080, 1920],
+    "fps": 30,
+    "aspect_ratio": "9:16",
+    "max_duration_seconds": 90,
+    "min_duration_seconds": 60,
+    "target_bitrate_mbps": 18
+  },
+
+  "voice": {
+    "speaking_pace_wpm": 150,
+    "silence_threshold_db": -19,
+    "silence_margin_sec": 0.05,
+    "loudnorm_integrated": -16,
+    "loudnorm_true_peak": -1.5,
+    "loudnorm_lra": 11
+  },
+
+  "captions": {
+    "whisper_model": "base.en",
+    "max_line_length": 42,
+    "format": "srt"
+  },
+
+  "cover_photo": {
+    "font_family": "Montserrat-Bold",
+    "font_size_town_name": 80,
+    "font_size_town_number": 48,
+    "font_size_hashtag": 36,
+    "text_color": "#FFFFFF",
+    "stroke_color": "#000000",
+    "stroke_width": 3
+  },
+
+  "selfie_overlay": {
+    "title_format": "NJ Town #{town_number}: {meal_type} @ {restaurant}",
+    "font_family": "Montserrat-Bold",
+    "font_size_title": 56,
+    "font_size_hashtag": 36,
+    "text_color": "#FFFFFF",
+    "stroke_color": "#000000",
+    "stroke_width": 3
+  },
+
+  "border_outline": {
+    "line_color": "#FF0000",
+    "line_width_px": 10,
+    "output_dpi": 300,
+    "crs": "EPSG:32618"
+  },
+
+  "labeled_map": {
+    "target_fill_color": "#FF6B35",
+    "neighbor_fill_color": "#A8D8EA",
+    "highlight_fill_color": "#FFD166",
+    "default_fill_color": "#E8E8E8",
+    "label_font_size": 9,
+    "output_dpi": 200
+  },
+
+  "github": {
+    "repo": "",
+    "project_number": null
+  }
+}

@@ -1,0 +1,28 @@
+# EatJerseyChallenge Tools - Python Dependencies
+
+# Section 1: GitHub Projects Pipeline
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Section 2 & 3: Geographic Data & Maps
+geopandas>=0.14.0
+matplotlib>=3.8.0
+shapely>=2.0.0
+adjustText>=1.0.0
+
+# Section 4: Wikipedia Research
+wikipedia-api>=0.6.0
+
+# Section 5: Cover Photo & Selfie Overlays
+Pillow>=10.0.0
+
+# Section 6: Voice Recording Cleanup
+auto-editor>=24.0.0
+
+# Section 7: Auto-Captioning (Python wrapper, optional)
+# faster-whisper>=1.0.0  # Alternative to whisper-cpp CLI
+
+# LLM clients (uncomment the ones you use)
+# openai>=1.0.0
+# anthropic>=0.18.0
+# llama-cpp-python>=0.2.0

@@ -1,0 +1,1 @@
+# EatJerseyChallenge automation scripts

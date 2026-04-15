@@ -1,0 +1,154 @@
+name: "New Town Visit"
+description: "Track a new EatJerseyChallenge town visit from raw footage to published video."
+title: "Town #{{ town_number }}: {{ town_name }}"
+labels: ["stage:raw-footage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## New Town Visit
+        Fill in the details for this EatJerseyChallenge town visit.
+
+  - type: input
+    id: town_name
+    attributes:
+      label: Town Name
+      description: "Official municipality name (e.g., 'Hoboken', 'Washington Township')"
+      placeholder: "Town Name"
+    validations:
+      required: true
+
+  - type: input
+    id: town_number
+    attributes:
+      label: Town Number
+      description: "Sequence number of this visit (1-564)"
+      placeholder: "42"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: county
+    attributes:
+      label: County
+      description: "NJ county this town is in"
+      options:
+        - Atlantic
+        - Bergen
+        - Burlington
+        - Camden
+        - Cape May
+        - Cumberland
+        - Essex
+        - Gloucester
+        - Hudson
+        - Hunterdon
+        - Mercer
+        - Middlesex
+        - Monmouth
+        - Morris
+        - Ocean
+        - Passaic
+        - Salem
+        - Somerset
+        - Sussex
+        - Union
+        - Warren
+    validations:
+      required: true
+
+  - type: dropdown
+    id: municipality_type
+    attributes:
+      label: Municipality Type
+      description: "Type of municipality"
+      options:
+        - Borough
+        - City
+        - Town
+        - Township
+        - Village
+    validations:
+      required: true
+
+  - type: input
+    id: restaurant
+    attributes:
+      label: Restaurant Name
+      description: "Name of the restaurant we ate at"
+      placeholder: "Restaurant Name"
+    validations:
+      required: true
+
+  - type: input
+    id: meal_type
+    attributes:
+      label: Meal Type
+      description: "Type of meal (e.g., Lunch, Dinner, Breakfast, Brunch)"
+      placeholder: "Dinner"
+    validations:
+      required: true
+
+  - type: input
+    id: visit_date
+    attributes:
+      label: Visit Date
+      description: "Date of the visit (YYYY-MM-DD)"
+      placeholder: "2025-03-15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: menu_items
+    attributes:
+      label: Menu Items
+      description: "List the dishes we ate"
+      placeholder: |
+        - Margherita pizza
+        - Caesar salad
+        - Tiramisu
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: "Any additional notes about the visit, restaurant, or town"
+      placeholder: "Notes about the visit..."
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Production Tracking
+        _The sections below will be populated during production._
+
+        ### Research
+        <!-- Populated by fetch_wikipedia.py / extract_research.py -->
+
+        ### Video/Photo Index
+        <!-- Populated by index_clips.py or filled manually -->
+
+        ### Script
+        <!-- Draft and final script text -->
+
+        ### Checklist
+        - [ ] Assets gathered on NAS
+        - [ ] Video/photo index complete
+        - [ ] Menu items documented
+        - [ ] Town research reviewed
+        - [ ] Script drafted
+        - [ ] Script finalized
+        - [ ] Voice recorded
+        - [ ] Voice cleaned (auto-editor)
+        - [ ] Captions generated (Whisper)
+        - [ ] Map fly-in created
+        - [ ] Border outline generated
+        - [ ] Cover photo generated
+        - [ ] Selfie overlay generated
+        - [ ] Video edited in DaVinci Resolve
+        - [ ] Published to Instagram
+        - [ ] Cross-posted (TikTok/YouTube Shorts)
