@@ -16,6 +16,7 @@ ejc-tools/
 │   ├── seed_issues.py             # Bulk-create GitHub Issues from towns.csv
 │   ├── generate_border.py         # Town border outline (transparent PNG)
 │   ├── generate_labeled_map.py    # Labeled municipality map with neighbors
+│   ├── generate_zipcode_overlay.py # Zip code overlay map for municipalities
 │   ├── generate_cover_photo.py    # 9:16 cover photo with text overlays
 │   ├── generate_selfie_overlay.py # Selfie card with title/hashtag overlays
 │   ├── fetch_wikipedia.py         # Batch-fetch Wikipedia articles
@@ -75,6 +76,7 @@ Detailed usage guides and edge cases for each tool:
 | [generate_towns_csv.py](docs/generate-towns-csv.md) | Generate the master `towns.csv` from Wikipedia |
 | [generate_border.py](docs/generate-border.md) | Generate red town border outlines on transparent PNGs |
 | [generate_labeled_map.py](docs/generate-labeled-map.md) | Generate labeled municipality maps with neighbors |
+| [generate_zipcode_overlay.py](docs/generate-zipcode-overlay.md) | Generate zip code overlay maps for municipalities |
 | [seed_issues.py](docs/seed-issues.md) | Bulk-create GitHub Issues from `towns.csv` |
 | [fetch_wikipedia.py](docs/fetch-wikipedia.md) | Batch-fetch Wikipedia articles for all NJ municipalities |
 | [extract_research.py](docs/extract-research.md) | LLM-powered research brief extraction from Wikipedia |

@@ -3,8 +3,9 @@ Shared NJ geographic data utilities.
 
 Loads US Census TIGER/Line shapefiles for NJ county subdivisions and provides
 helpers for town lookup, neighbor queries, centroid/bounds, and reprojection.
+Also loads ZCTA (ZIP Code Tabulation Area) data for zip code overlays.
 
-Used by: generate_border.py, generate_labeled_map.py, generate_cover_photo.py
+Used by: generate_border.py, generate_labeled_map.py, generate_zipcode_overlay.py
 """
 
 import json
@@ -12,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import geopandas as gpd
+from shapely.geometry import box
 
 # Default paths (relative to repo root)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -270,3 +272,95 @@ def get_all_towns(gdf=None):
         })
 
     return sorted(towns, key=lambda t: (t["county"], t["name"]))
+
+
+@lru_cache(maxsize=1)
+def load_zcta_shapefile(shapefile_path=None, target_crs="EPSG:32618"):
+    """
+    Load the ZCTA (ZIP Code Tabulation Area) shapefile, filtered to NJ area.
+
+    The ZCTA file is a national dataset. This function filters to ZCTAs that
+    intersect the bounding box of NJ (derived from the municipality shapefile)
+    to avoid keeping all ~33k US ZCTAs in memory.
+
+    Parameters
+    ----------
+    shapefile_path : str or Path, optional
+        Path to the ZCTA .shp file. Defaults to config.json paths.zcta_shapefile.
+    target_crs : str
+        Target CRS for reprojection. Default EPSG:32618 (UTM Zone 18N).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        NJ-area ZCTAs, reprojected to target_crs.
+    """
+    if shapefile_path is None:
+        cfg = _load_config()
+        shapefile_path = _REPO_ROOT / cfg.get("paths", {}).get(
+            "zcta_shapefile",
+            "data/tl_2025_us_zcta520/tl_2025_us_zcta520.shp",
+        )
+    shapefile_path = Path(shapefile_path)
+
+    if not shapefile_path.exists():
+        raise FileNotFoundError(
+            f"ZCTA shapefile not found: {shapefile_path}\n"
+            f"Download with: python scripts/download_tiger.py --zcta\n"
+            f"Or manually from: https://www.census.gov/cgi-bin/geo/shapefiles/index.php\n"
+            f"  Select Year: 2024, Layer Type: ZIP Code Tabulation Areas\n"
+            f"  Download the national file and extract to: {shapefile_path.parent}"
+        )
+
+    # Load NJ municipality bounds to create a spatial filter
+    muni_gdf = load_shapefile(target_crs=None)  # keep in original CRS for bbox
+    nj_bounds = muni_gdf.total_bounds  # minx, miny, maxx, maxy
+    # Add generous padding to catch ZCTAs that straddle the NJ border
+    pad = 0.1  # ~0.1 degrees ≈ 11km
+    nj_bbox = box(
+        nj_bounds[0] - pad, nj_bounds[1] - pad,
+        nj_bounds[2] + pad, nj_bounds[3] + pad,
+    )
+
+    # Read with bounding box filter for performance
+    zcta_gdf = gpd.read_file(shapefile_path, bbox=nj_bbox)
+
+    if target_crs:
+        zcta_gdf = zcta_gdf.to_crs(target_crs)
+
+    return zcta_gdf
+
+
+def get_overlapping_zctas(town_row, zcta_gdf=None):
+    """
+    Find all ZCTAs that overlap with the given municipality.
+
+    Parameters
+    ----------
+    town_row : geopandas.GeoSeries
+        A single row from the municipality shapefile.
+    zcta_gdf : GeoDataFrame, optional
+        Pre-loaded ZCTA shapefile. Loaded automatically if not provided.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        ZCTAs that intersect the municipality polygon.
+    """
+    if zcta_gdf is None:
+        zcta_gdf = load_zcta_shapefile()
+
+    geom = town_row.geometry
+    mask = zcta_gdf.geometry.intersects(geom)
+    overlapping = zcta_gdf[mask].copy()
+
+    # Filter out ZCTAs with negligible overlap (< 0.1% of town area)
+    town_area = geom.area
+    if town_area > 0:
+        overlapping["_overlap_area"] = overlapping.geometry.intersection(geom).area
+        overlapping = overlapping[
+            overlapping["_overlap_area"] > town_area * 0.001
+        ].copy()
+        overlapping = overlapping.drop(columns=["_overlap_area"])
+
+    return overlapping

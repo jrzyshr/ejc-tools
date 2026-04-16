@@ -6,7 +6,8 @@
   "paths": {
     "nas_asset_root": "/Volumes/NAS/EatJerseyChallenge",
     "asset_folder_pattern": "{town_number} - {town_name}",
-    "tiger_shapefile": "data/tl_2025_34_cousub/tl_2025_34_cousub.shp"
+    "tiger_shapefile": "data/tl_2025_34_cousub/tl_2025_34_cousub.shp",
+    "zcta_shapefile": "data/tl_2025_us_zcta520/tl_2025_us_zcta520.shp"
   },
 
   "video": {
@@ -66,6 +67,19 @@
     "highlight_fill_color": "#FFD166",
     "default_fill_color": "#E8E8E8",
     "label_font_size": 9,
+    "output_dpi": 200
+  },
+
+  "zipcode_overlay": {
+    "palette": ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
+                "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC"],
+    "outside_saturation": 0.6,
+    "outside_alpha": 0.4,
+    "boundary_color": "#222222",
+    "boundary_width": 1.5,
+    "municipality_boundary_color": "#000000",
+    "municipality_boundary_width": 2.5,
+    "label_font_size": 10,
     "output_dpi": 200
   },
 
