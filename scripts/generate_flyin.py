@@ -63,8 +63,28 @@ def load_config():
     return {}
 
 
+def _load_dotenv():
+    """Load .env file from repo root if it exists."""
+    env_path = REPO_ROOT / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 def get_cesium_token(cfg):
-    """Get Cesium Ion access token from environment variable."""
+    """Get Cesium Ion access token from environment or .env file."""
+    _load_dotenv()
     env_var = cfg.get("cesium_ion_token_env", "CESIUM_ION_TOKEN")
     token = os.environ.get(env_var, "")
     if not token:
@@ -72,7 +92,8 @@ def get_cesium_token(cfg):
             f"ERROR: Cesium Ion access token not found.\n"
             f"  1. Sign up at https://ion.cesium.com/ (free)\n"
             f"  2. Create an access token at https://ion.cesium.com/tokens\n"
-            f"  3. Set: export {env_var}='your-token-here'\n",
+            f"  3. Add to .env file: {env_var}=your-token-here\n"
+            f"     Or set: export {env_var}='your-token-here'\n",
             file=sys.stderr,
         )
         sys.exit(1)
