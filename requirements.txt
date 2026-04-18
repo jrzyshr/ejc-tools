@@ -26,3 +26,6 @@ auto-editor>=24.0.0
 
 # Section 7: Auto-Captioning (Python wrapper, optional)
 # faster-whisper>=1.0.0  # Alternative to whisper-cpp CLI
+
+# Section 11: Google Earth-style Fly-in Videos
+playwright>=1.40.0

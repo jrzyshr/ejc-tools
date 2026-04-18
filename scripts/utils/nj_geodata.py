@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import geopandas as gpd
-from shapely.geometry import box
+from shapely.geometry import box, mapping
 
 # Default paths (relative to repo root)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -237,6 +237,70 @@ def get_centroid(town_row):
 def get_bounds(town_row):
     """Get the bounding box (minx, miny, maxx, maxy) of a municipality."""
     return town_row.geometry.bounds
+
+
+def to_geojson(town_row, target_crs="EPSG:4326"):
+    """
+    Export a municipality's geometry as a GeoJSON Feature dict.
+
+    Reprojects from the shapefile's CRS (typically UTM EPSG:32618) to
+    the target CRS (default WGS84 for web mapping).
+
+    Parameters
+    ----------
+    town_row : geopandas.GeoSeries
+        A single row from the shapefile (from lookup_town).
+    target_crs : str
+        Target CRS for the output coordinates. Default EPSG:4326 (WGS84).
+
+    Returns
+    -------
+    dict
+        A GeoJSON Feature with geometry and properties (NAME, GEOID, COUNTYFP).
+    """
+    gdf = gpd.GeoDataFrame([town_row], crs="EPSG:32618")
+    if target_crs and target_crs != "EPSG:32618":
+        gdf = gdf.to_crs(target_crs)
+
+    geom = gdf.iloc[0].geometry
+    return {
+        "type": "Feature",
+        "properties": {
+            "name": get_display_name(town_row),
+            "geoid": town_row.get("GEOID", ""),
+            "county_fips": town_row.get("COUNTYFP", ""),
+        },
+        "geometry": mapping(geom),
+    }
+
+
+def get_bounds_wgs84(town_row):
+    """
+    Get the bounding box of a municipality in WGS84 (EPSG:4326).
+
+    Returns
+    -------
+    tuple
+        (west, south, east, north) in decimal degrees.
+    """
+    gdf = gpd.GeoDataFrame([town_row], crs="EPSG:32618")
+    gdf = gdf.to_crs("EPSG:4326")
+    return gdf.iloc[0].geometry.bounds
+
+
+def get_centroid_wgs84(town_row):
+    """
+    Get the centroid of a municipality in WGS84 (EPSG:4326).
+
+    Returns
+    -------
+    tuple
+        (longitude, latitude) in decimal degrees.
+    """
+    gdf = gpd.GeoDataFrame([town_row], crs="EPSG:32618")
+    gdf = gdf.to_crs("EPSG:4326")
+    centroid = gdf.iloc[0].geometry.centroid
+    return (centroid.x, centroid.y)
 
 
 def get_display_name(town_row):

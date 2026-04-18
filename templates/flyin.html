@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EJC Fly-in</title>
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.125/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.125/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<style>
+  html, body, #cesiumContainer {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+  }
+  /* Hide all Cesium UI chrome */
+  .cesium-viewer-toolbar,
+  .cesium-viewer-animationContainer,
+  .cesium-viewer-timelineContainer,
+  .cesium-viewer-fullscreenContainer,
+  .cesium-viewer-vrContainer,
+  .cesium-viewer-bottom,
+  .cesium-credit-lightbox-overlay,
+  .cesium-credit-expand-link {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+<div id="cesiumContainer"></div>
+<script>
+// ---- Configuration injected by Python ----
+// These globals are set via page.evaluate() before startFlyIn() is called.
+var FLYIN_CONFIG = {
+  token: '',
+  centroidLng: -74.0285,
+  centroidLat: 40.7440,
+  boundsWest: -74.0436,
+  boundsSouth: 40.7367,
+  boundsEast: -74.0098,
+  boundsNorth: 40.7558,
+  geojson: null,
+  durationSeconds: 9,
+  phasesPct: {
+    globe_hold: [0, 11],
+    globe_to_state: [11, 44],
+    state_to_town: [44, 72],
+    border_fade_in: [72, 89],
+    final_hold: [89, 100]
+  },
+  cameraStartAltitude: 20000000,
+  cameraEndAltitudeOffset: 5000,
+  cameraPitchDeg: -30,
+  borderColor: '#FF0000',
+  borderOpacity: 0.8,
+  showBorder: true
+};
+
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  return {
+    r: parseInt(hex.substring(0, 2), 16),
+    g: parseInt(hex.substring(2, 4), 16),
+    b: parseInt(hex.substring(4, 6), 16)
+  };
+}
+
+function computeEndAltitude() {
+  // Calculate camera altitude from bounding box to frame the town
+  var lngSpan = FLYIN_CONFIG.boundsEast - FLYIN_CONFIG.boundsWest;
+  var latSpan = FLYIN_CONFIG.boundsNorth - FLYIN_CONFIG.boundsSouth;
+  var maxSpanDeg = Math.max(lngSpan, latSpan);
+  // Rough conversion: 1 degree ≈ 111km, then altitude ≈ span * factor
+  // Factor tuned so the town fills ~60% of the vertical frame in 9:16
+  var spanMeters = maxSpanDeg * 111000;
+  var altitude = spanMeters * 2.5 + FLYIN_CONFIG.cameraEndAltitudeOffset;
+  return Math.max(altitude, 3000); // minimum 3km
+}
+
+var viewer, borderEntity;
+
+function initViewer() {
+  Cesium.Ion.defaultAccessToken = FLYIN_CONFIG.token;
+
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    terrain: Cesium.Terrain.fromWorldTerrain(),
+    animation: false,
+    timeline: false,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    selectionIndicator: false,
+    navigationHelpButton: false,
+    infoBox: false,
+    fullscreenButton: false,
+    vrButton: false,
+    creditContainer: document.createElement('div'), // hide credits
+    skyBox: new Cesium.SkyBox({
+      sources: {
+        positiveX: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_px.jpg'),
+        negativeX: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_mx.jpg'),
+        positiveY: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_py.jpg'),
+        negativeY: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_my.jpg'),
+        positiveZ: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_pz.jpg'),
+        negativeZ: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_mz.jpg')
+      }
+    })
+  });
+
+  // Disable user interaction so the camera follows the scripted path only
+  viewer.scene.screenSpaceCameraController.enableRotate = false;
+  viewer.scene.screenSpaceCameraController.enableTranslate = false;
+  viewer.scene.screenSpaceCameraController.enableZoom = false;
+  viewer.scene.screenSpaceCameraController.enableTilt = false;
+  viewer.scene.screenSpaceCameraController.enableLook = false;
+
+  // Remove atmosphere haze for cleaner zoom
+  viewer.scene.globe.showGroundAtmosphere = true;
+  viewer.scene.skyAtmosphere.show = true;
+
+  // Set initial camera to show full globe, centered roughly on Atlantic
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(-50, 30, FLYIN_CONFIG.cameraStartAltitude),
+    orientation: {
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-90),
+      roll: 0
+    }
+  });
+
+  // Pre-add the border entity (hidden, alpha=0) if geojson is provided
+  if (FLYIN_CONFIG.showBorder && FLYIN_CONFIG.geojson) {
+    addBorderEntity(0.0);
+  }
+}
+
+function addBorderEntity(initialAlpha) {
+  var geojson = FLYIN_CONFIG.geojson;
+  var rgb = hexToRgb(FLYIN_CONFIG.borderColor);
+
+  // Extract coordinates from GeoJSON and convert to Cesium positions
+  var positions = geojsonToPositions(geojson.geometry);
+
+  if (geojson.geometry.type === 'MultiPolygon') {
+    // For MultiPolygon, create one entity per polygon ring
+    geojson.geometry.coordinates.forEach(function(polygon) {
+      var ring = polygon[0]; // exterior ring
+      var degreesArray = [];
+      ring.forEach(function(coord) {
+        degreesArray.push(coord[0], coord[1]);
+      });
+      var entity = viewer.entities.add({
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(degreesArray),
+          material: new Cesium.ColorMaterialProperty(
+            new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha * 0.25)
+          ),
+          outline: true,
+          outlineColor: new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha),
+          outlineWidth: 3,
+          height: 0,
+          classificationType: Cesium.ClassificationType.BOTH
+        }
+      });
+      if (!borderEntity) borderEntity = [];
+      borderEntity.push(entity);
+    });
+  } else {
+    // Polygon
+    var ring = geojson.geometry.coordinates[0];
+    var degreesArray = [];
+    ring.forEach(function(coord) {
+      degreesArray.push(coord[0], coord[1]);
+    });
+    borderEntity = viewer.entities.add({
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(degreesArray),
+        material: new Cesium.ColorMaterialProperty(
+          new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha * 0.25)
+        ),
+        outline: true,
+        outlineColor: new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha),
+        outlineWidth: 3,
+        height: 0,
+        classificationType: Cesium.ClassificationType.BOTH
+      }
+    });
+    borderEntity = [borderEntity];
+  }
+}
+
+function geojsonToPositions(geometry) {
+  // Utility - not directly used for entity creation but kept for reference
+  var coords;
+  if (geometry.type === 'Polygon') {
+    coords = geometry.coordinates[0];
+  } else if (geometry.type === 'MultiPolygon') {
+    coords = geometry.coordinates[0][0];
+  } else {
+    return [];
+  }
+  return Cesium.Cartesian3.fromDegreesArray(
+    coords.reduce(function(arr, c) { arr.push(c[0], c[1]); return arr; }, [])
+  );
+}
+
+function setBorderAlpha(alpha) {
+  if (!borderEntity) return;
+  var rgb = hexToRgb(FLYIN_CONFIG.borderColor);
+  var entities = Array.isArray(borderEntity) ? borderEntity : [borderEntity];
+  entities.forEach(function(entity) {
+    if (entity.polygon) {
+      entity.polygon.material = new Cesium.ColorMaterialProperty(
+        new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, alpha * 0.25)
+      );
+      entity.polygon.outlineColor = new Cesium.Color(
+        rgb.r / 255, rgb.g / 255, rgb.b / 255, alpha
+      );
+    }
+  });
+}
+
+function waitForTiles() {
+  return new Promise(function(resolve) {
+    var checks = 0;
+    var maxChecks = 300; // 30 seconds at 100ms intervals
+    function check() {
+      var tilesLoading = viewer.scene.globe.tilesLoaded;
+      checks++;
+      if (tilesLoading || checks >= maxChecks) {
+        // Give a bit more time for textures to finish
+        setTimeout(resolve, 500);
+      } else {
+        setTimeout(check, 100);
+      }
+    }
+    check();
+  });
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function startFlyIn() {
+  var cfg = FLYIN_CONFIG;
+  var duration = cfg.durationSeconds * 1000; // ms
+  var phases = cfg.phasesPct;
+  var endAlt = computeEndAltitude();
+  var pitchRad = Cesium.Math.toRadians(cfg.cameraPitchDeg);
+
+  // NJ center for the state-level waypoint
+  var njLng = -74.4057;
+  var njLat = 40.0583;
+  var stateAlt = 150000; // 150km for state-level view
+
+  var startTime = performance.now();
+
+  function phaseFraction(phaseName, elapsed) {
+    // Returns 0..1 progress within a named phase, or -1 if not in that phase
+    var p = phases[phaseName];
+    var phaseStart = (p[0] / 100) * duration;
+    var phaseEnd = (p[1] / 100) * duration;
+    if (elapsed < phaseStart) return -1;
+    if (elapsed >= phaseEnd) return 1;
+    return (elapsed - phaseStart) / (phaseEnd - phaseStart);
+  }
+
+  function animate() {
+    var now = performance.now();
+    var elapsed = now - startTime;
+
+    if (elapsed >= duration) {
+      // Final position
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(cfg.centroidLng, cfg.centroidLat, endAlt),
+        orientation: {
+          heading: 0,
+          pitch: pitchRad,
+          roll: 0
+        }
+      });
+      if (cfg.showBorder && borderEntity) {
+        setBorderAlpha(cfg.borderOpacity);
+      }
+      // Signal completion
+      window._flyInComplete = true;
+      window.dispatchEvent(new Event('flyInComplete'));
+      return;
+    }
+
+    // Determine current phase and compute camera position
+
+    // Phase A: Globe hold — gentle drift toward NJ
+    var fA = phaseFraction('globe_hold', elapsed);
+    if (fA >= 0 && fA < 1) {
+      var t = easeInOutCubic(fA);
+      var lng = lerp(-50, -60, t);
+      var lat = lerp(30, 35, t);
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(lng, lat, cfg.cameraStartAltitude),
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 }
+      });
+    }
+
+    // Phase B: Globe to state level
+    var fB = phaseFraction('globe_to_state', elapsed);
+    if (fB >= 0 && fB < 1) {
+      var t = easeInOutCubic(fB);
+      var lng = lerp(-60, njLng, t);
+      var lat = lerp(35, njLat, t);
+      var alt = lerp(cfg.cameraStartAltitude, stateAlt, t);
+      var pitch = lerp(-90, Cesium.Math.toDegrees(pitchRad), t);
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(pitch), roll: 0 }
+      });
+    }
+
+    // Phase C: State to town level
+    var fC = phaseFraction('state_to_town', elapsed);
+    if (fC >= 0 && fC < 1) {
+      var t = easeInOutCubic(fC);
+      var lng = lerp(njLng, cfg.centroidLng, t);
+      var lat = lerp(njLat, cfg.centroidLat, t);
+      var alt = lerp(stateAlt, endAlt, t);
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+        orientation: { heading: 0, pitch: pitchRad, roll: 0 }
+      });
+    }
+
+    // Phase D: Border fade-in
+    var fD = phaseFraction('border_fade_in', elapsed);
+    if (fD >= 0 && fD <= 1) {
+      // Hold camera at town level
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(cfg.centroidLng, cfg.centroidLat, endAlt),
+        orientation: { heading: 0, pitch: pitchRad, roll: 0 }
+      });
+      if (cfg.showBorder && borderEntity) {
+        var alpha = lerp(0, cfg.borderOpacity, easeInOutCubic(fD));
+        setBorderAlpha(alpha);
+      }
+    }
+
+    // Phase E: Final hold
+    var fE = phaseFraction('final_hold', elapsed);
+    if (fE >= 0) {
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(cfg.centroidLng, cfg.centroidLat, endAlt),
+        orientation: { heading: 0, pitch: pitchRad, roll: 0 }
+      });
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
+}
+
+// Initialize viewer on load
+initViewer();
+
+// Signal that the page is ready for Playwright
+window._viewerReady = true;
+</script>
+</body>
+</html>
