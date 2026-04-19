@@ -129,9 +129,12 @@ function initViewer() {
   viewer.scene.globe.showGroundAtmosphere = true;
   viewer.scene.skyAtmosphere.show = true;
 
-  // Set initial camera to show full globe, centered roughly on Atlantic
+  // Set initial camera directly above town centroid at globe altitude
   viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(-50, 30, FLYIN_CONFIG.cameraStartAltitude),
+    destination: Cesium.Cartesian3.fromDegrees(
+      FLYIN_CONFIG.centroidLng, FLYIN_CONFIG.centroidLat,
+      FLYIN_CONFIG.cameraStartAltitude
+    ),
     orientation: {
       heading: 0,
       pitch: Cesium.Math.toRadians(-90),
@@ -370,10 +373,10 @@ function applyAnimationFrame(elapsedMs) {
   var endAlt = computeEndAltitude();
   var pitchRad = Cesium.Math.toRadians(-90);
 
-  // Starting camera position (globe view over eastern US)
-  var startLng = -74.0;
-  var startLat = 40.0;
+  // Camera stays directly above town centroid — zoom is purely vertical
   var startAlt = cfg.cameraStartAltitude;
+  var lng = cfg.centroidLng;
+  var lat = cfg.centroidLat;
 
   var elapsed = Math.min(elapsedMs, duration);
 
@@ -383,10 +386,6 @@ function applyAnimationFrame(elapsedMs) {
   // Overall zoom progress (0..1)
   var zoomT = Math.min(elapsed / (duration * zoomEnd), 1.0);
   var easedT = easeInOutCubic(zoomT);
-
-  // Interpolate position — lng/lat converge to town centroid
-  var lng = lerp(startLng, cfg.centroidLng, easedT);
-  var lat = lerp(startLat, cfg.centroidLat, easedT);
 
   // Altitude uses exponential interpolation for natural zoom feel
   // (linear interpolation of altitude looks like it stalls at high altitudes)
