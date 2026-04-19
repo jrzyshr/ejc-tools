@@ -79,10 +79,20 @@ function computeEndAltitude() {
 var viewer, borderEntity;
 
 function initViewer() {
+  // Destroy any previous viewer instance
+  if (viewer) {
+    try { viewer.destroy(); } catch(e) {}
+    viewer = null;
+    borderEntity = null;
+  }
+
   Cesium.Ion.defaultAccessToken = FLYIN_CONFIG.token;
 
   viewer = new Cesium.Viewer('cesiumContainer', {
     terrain: Cesium.Terrain.fromWorldTerrain(),
+    baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+      Cesium.IonImageryProvider.fromAssetId(2) // Bing Maps Aerial
+    ),
     animation: false,
     timeline: false,
     baseLayerPicker: false,
@@ -128,65 +138,97 @@ function initViewer() {
     }
   });
 
-  // Pre-add the border entity (hidden, alpha=0) if geojson is provided
-  if (FLYIN_CONFIG.showBorder && FLYIN_CONFIG.geojson) {
-    addBorderEntity(0.0);
-  }
+  // Border entities are created on-demand during the animation
+  // (creating at alpha=0 causes Cesium to skip rendering them)
+  window._borderCreated = false;
 }
 
-function addBorderEntity(initialAlpha) {
+function addBorderEntity(alpha) {
+  // Store border data for canvas overlay rendering
+  // (Cesium Entity polylines don't render reliably in headless Chrome)
   var geojson = FLYIN_CONFIG.geojson;
-  var rgb = hexToRgb(FLYIN_CONFIG.borderColor);
+  window._borderAlpha = alpha;
+  window._borderRings = [];
 
-  // Extract coordinates from GeoJSON and convert to Cesium positions
-  var positions = geojsonToPositions(geojson.geometry);
+  function extractRing(ring) {
+    var coords = ring.map(function(c) { return [c[0], c[1]]; });
+    // Close ring if needed
+    var first = coords[0];
+    var last = coords[coords.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      coords.push([first[0], first[1]]);
+    }
+    window._borderRings.push(coords);
+  }
 
   if (geojson.geometry.type === 'MultiPolygon') {
-    // For MultiPolygon, create one entity per polygon ring
     geojson.geometry.coordinates.forEach(function(polygon) {
-      var ring = polygon[0]; // exterior ring
-      var degreesArray = [];
-      ring.forEach(function(coord) {
-        degreesArray.push(coord[0], coord[1]);
-      });
-      var entity = viewer.entities.add({
-        polygon: {
-          hierarchy: Cesium.Cartesian3.fromDegreesArray(degreesArray),
-          material: new Cesium.ColorMaterialProperty(
-            new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha * 0.25)
-          ),
-          outline: true,
-          outlineColor: new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha),
-          outlineWidth: 3,
-          height: 0,
-          classificationType: Cesium.ClassificationType.BOTH
-        }
-      });
-      if (!borderEntity) borderEntity = [];
-      borderEntity.push(entity);
+      extractRing(polygon[0]);
     });
   } else {
-    // Polygon
-    var ring = geojson.geometry.coordinates[0];
-    var degreesArray = [];
+    extractRing(geojson.geometry.coordinates[0]);
+  }
+
+  // Create the overlay canvas
+  if (!window._borderCanvas) {
+    var canvas = document.createElement('canvas');
+    canvas.id = 'borderOverlay';
+    canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;';
+    canvas.width = 1080;
+    canvas.height = 1920;
+    document.body.appendChild(canvas);
+    window._borderCanvas = canvas;
+  }
+
+  // Mark border entity as truthy for compatibility
+  borderEntity = true;
+  drawBorderOverlay();
+}
+
+function drawBorderOverlay() {
+  var canvas = window._borderCanvas;
+  if (!canvas || !window._borderRings) return;
+  var ctx = canvas.getContext('2d');
+  var alpha = window._borderAlpha || 0;
+  var rgb = hexToRgb(FLYIN_CONFIG.borderColor);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (alpha <= 0) return;
+
+  window._borderRings.forEach(function(ring) {
+    // Project each coordinate to screen space
+    var screenPts = [];
     ring.forEach(function(coord) {
-      degreesArray.push(coord[0], coord[1]);
-    });
-    borderEntity = viewer.entities.add({
-      polygon: {
-        hierarchy: Cesium.Cartesian3.fromDegreesArray(degreesArray),
-        material: new Cesium.ColorMaterialProperty(
-          new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha * 0.25)
-        ),
-        outline: true,
-        outlineColor: new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, initialAlpha),
-        outlineWidth: 3,
-        height: 0,
-        classificationType: Cesium.ClassificationType.BOTH
+      var cartesian = Cesium.Cartesian3.fromDegrees(coord[0], coord[1]);
+      var screenPos = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, cartesian);
+      if (screenPos) {
+        screenPts.push(screenPos);
       }
     });
-    borderEntity = [borderEntity];
-  }
+
+    if (screenPts.length < 3) return;
+
+    // Draw filled polygon
+    ctx.beginPath();
+    ctx.moveTo(screenPts[0].x, screenPts[0].y);
+    for (var i = 1; i < screenPts.length; i++) {
+      ctx.lineTo(screenPts[i].x, screenPts[i].y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (alpha * 0.15) + ')';
+    ctx.fill();
+
+    // Draw thick border outline
+    ctx.beginPath();
+    ctx.moveTo(screenPts[0].x, screenPts[0].y);
+    for (var j = 1; j < screenPts.length; j++) {
+      ctx.lineTo(screenPts[j].x, screenPts[j].y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  });
 }
 
 function geojsonToPositions(geometry) {
@@ -205,19 +247,8 @@ function geojsonToPositions(geometry) {
 }
 
 function setBorderAlpha(alpha) {
-  if (!borderEntity) return;
-  var rgb = hexToRgb(FLYIN_CONFIG.borderColor);
-  var entities = Array.isArray(borderEntity) ? borderEntity : [borderEntity];
-  entities.forEach(function(entity) {
-    if (entity.polygon) {
-      entity.polygon.material = new Cesium.ColorMaterialProperty(
-        new Cesium.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255, alpha * 0.25)
-      );
-      entity.polygon.outlineColor = new Cesium.Color(
-        rgb.r / 255, rgb.g / 255, rgb.b / 255, alpha
-      );
-    }
-  });
+  window._borderAlpha = alpha;
+  drawBorderOverlay();
 }
 
 function waitForTiles() {
@@ -247,124 +278,110 @@ function easeInOutCubic(t) {
 }
 
 function startFlyIn() {
-  var cfg = FLYIN_CONFIG;
-  var duration = cfg.durationSeconds * 1000; // ms
-  var phases = cfg.phasesPct;
-  var endAlt = computeEndAltitude();
-  var pitchRad = Cesium.Math.toRadians(cfg.cameraPitchDeg);
-
-  // NJ center for the state-level waypoint
-  var njLng = -74.4057;
-  var njLat = 40.0583;
-  var stateAlt = 150000; // 150km for state-level view
-
   var startTime = performance.now();
-
-  function phaseFraction(phaseName, elapsed) {
-    // Returns 0..1 progress within a named phase, or -1 if not in that phase
-    var p = phases[phaseName];
-    var phaseStart = (p[0] / 100) * duration;
-    var phaseEnd = (p[1] / 100) * duration;
-    if (elapsed < phaseStart) return -1;
-    if (elapsed >= phaseEnd) return 1;
-    return (elapsed - phaseStart) / (phaseEnd - phaseStart);
-  }
-
   function animate() {
-    var now = performance.now();
-    var elapsed = now - startTime;
-
-    if (elapsed >= duration) {
-      // Final position
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(cfg.centroidLng, cfg.centroidLat, endAlt),
-        orientation: {
-          heading: 0,
-          pitch: pitchRad,
-          roll: 0
-        }
-      });
-      if (cfg.showBorder && borderEntity) {
-        setBorderAlpha(cfg.borderOpacity);
-      }
-      // Signal completion
+    var elapsed = performance.now() - startTime;
+    var done = applyAnimationFrame(elapsed);
+    if (done) {
       window._flyInComplete = true;
       window.dispatchEvent(new Event('flyInComplete'));
       return;
     }
-
-    // Determine current phase and compute camera position
-
-    // Phase A: Globe hold — gentle drift toward NJ
-    var fA = phaseFraction('globe_hold', elapsed);
-    if (fA >= 0 && fA < 1) {
-      var t = easeInOutCubic(fA);
-      var lng = lerp(-50, -60, t);
-      var lat = lerp(30, 35, t);
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(lng, lat, cfg.cameraStartAltitude),
-        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 }
-      });
-    }
-
-    // Phase B: Globe to state level
-    var fB = phaseFraction('globe_to_state', elapsed);
-    if (fB >= 0 && fB < 1) {
-      var t = easeInOutCubic(fB);
-      var lng = lerp(-60, njLng, t);
-      var lat = lerp(35, njLat, t);
-      var alt = lerp(cfg.cameraStartAltitude, stateAlt, t);
-      var pitch = lerp(-90, Cesium.Math.toDegrees(pitchRad), t);
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
-        orientation: { heading: 0, pitch: Cesium.Math.toRadians(pitch), roll: 0 }
-      });
-    }
-
-    // Phase C: State to town level
-    var fC = phaseFraction('state_to_town', elapsed);
-    if (fC >= 0 && fC < 1) {
-      var t = easeInOutCubic(fC);
-      var lng = lerp(njLng, cfg.centroidLng, t);
-      var lat = lerp(njLat, cfg.centroidLat, t);
-      var alt = lerp(stateAlt, endAlt, t);
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
-        orientation: { heading: 0, pitch: pitchRad, roll: 0 }
-      });
-    }
-
-    // Phase D: Border fade-in
-    var fD = phaseFraction('border_fade_in', elapsed);
-    if (fD >= 0 && fD <= 1) {
-      // Hold camera at town level
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(cfg.centroidLng, cfg.centroidLat, endAlt),
-        orientation: { heading: 0, pitch: pitchRad, roll: 0 }
-      });
-      if (cfg.showBorder && borderEntity) {
-        var alpha = lerp(0, cfg.borderOpacity, easeInOutCubic(fD));
-        setBorderAlpha(alpha);
-      }
-    }
-
-    // Phase E: Final hold
-    var fE = phaseFraction('final_hold', elapsed);
-    if (fE >= 0) {
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(cfg.centroidLng, cfg.centroidLat, endAlt),
-        orientation: { heading: 0, pitch: pitchRad, roll: 0 }
-      });
-    }
-
     requestAnimationFrame(animate);
   }
-
   requestAnimationFrame(animate);
 }
 
-// Initialize viewer on load
-initViewer();
+/**
+ * Position the camera and border for a specific elapsed time (in ms).
+ * Used by Python for frame-by-frame capture. Returns a promise that
+ * resolves after tiles are loaded (or a timeout).
+ */
+function setAnimationTime(elapsedMs) {
+  applyAnimationFrame(elapsedMs);
+  return new Promise(function(resolve) {
+    var maxWait = 5000;
+    var start = Date.now();
+    function waitForTiles() {
+      viewer.scene.render();
+      if (viewer.scene.globe.tilesLoaded || Date.now() - start > maxWait) {
+        resolve();
+      } else {
+        setTimeout(waitForTiles, 100);
+      }
+    }
+    waitForTiles();
+  });
+}
+
+/**
+ * Core animation logic — positions camera and border for a given elapsed
+ * time. Used by both startFlyIn() (real-time) and setAnimationTime()
+ * (frame-by-frame). Returns true when the animation is complete.
+ */
+function applyAnimationFrame(elapsedMs) {
+  var cfg = FLYIN_CONFIG;
+  var duration = cfg.durationSeconds * 1000; // ms
+  var endAlt = computeEndAltitude();
+  var pitchRad = Cesium.Math.toRadians(-90);
+
+  // Starting camera position (globe view over eastern US)
+  var startLng = -74.0;
+  var startLat = 40.0;
+  var startAlt = cfg.cameraStartAltitude;
+
+  var elapsed = Math.min(elapsedMs, duration);
+
+  // Two-phase layout:
+  //   Zoom phase: 0% – 75% of duration — continuous zoom from globe to town
+  //   Border+hold: 75% – 100% — fade in border and hold
+  var zoomEnd = 0.75;
+  var borderStart = 0.70; // slight overlap so border starts during final zoom
+  var borderEnd = 0.90;
+
+  // Overall zoom progress (0..1)
+  var zoomT = Math.min(elapsed / (duration * zoomEnd), 1.0);
+  var easedT = easeInOutCubic(zoomT);
+
+  // Interpolate position — lng/lat converge to town centroid
+  var lng = lerp(startLng, cfg.centroidLng, easedT);
+  var lat = lerp(startLat, cfg.centroidLat, easedT);
+
+  // Altitude uses exponential interpolation for natural zoom feel
+  // (linear interpolation of altitude looks like it stalls at high altitudes)
+  var logStart = Math.log(startAlt);
+  var logEnd = Math.log(endAlt);
+  var alt = Math.exp(lerp(logStart, logEnd, easedT));
+
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+    orientation: { heading: 0, pitch: pitchRad, roll: 0 }
+  });
+
+  // Border fade-in
+  var borderProgress = (elapsed / duration - borderStart) / (borderEnd - borderStart);
+  if (borderProgress > 0 && cfg.showBorder && cfg.geojson) {
+    var alpha = lerp(0, cfg.borderOpacity, easeInOutCubic(Math.min(borderProgress, 1.0)));
+    if (!window._borderCreated) {
+      addBorderEntity(alpha);
+      window._borderCreated = true;
+    } else {
+      setBorderAlpha(alpha);
+    }
+  }
+
+  if (elapsed >= duration) {
+    if (cfg.showBorder && borderEntity) {
+      setBorderAlpha(cfg.borderOpacity);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+// Do NOT initialize viewer on load — wait for Python to inject
+// the config with the Cesium Ion token first, then call initViewer().
 
 // Signal that the page is ready for Playwright
 window._viewerReady = true;

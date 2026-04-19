@@ -29,12 +29,14 @@ Usage:
 
 import argparse
 import csv
+import http.server
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import webbrowser
 from pathlib import Path
 
@@ -196,84 +198,106 @@ def render_flyin(flyin_config, output_path, cfg):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="ejc_flyin_") as tmpdir:
+    # Serve the template via HTTP to avoid file:// restrictions
+    # that block Cesium tile requests in headless Chrome
+    template_dir = str(TEMPLATE_PATH.parent)
+    handler_cls = http.server.SimpleHTTPRequestHandler
+    httpd = http.server.HTTPServer(
+        ("127.0.0.1", 0),
+        lambda *a, **k: handler_cls(*a, directory=template_dir, **k),
+    )
+    port = httpd.server_address[1]
+    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    server_thread.start()
+
+    try:
+      with tempfile.TemporaryDirectory(prefix="ejc_flyin_") as tmpdir:
         tmpdir = Path(tmpdir)
-        recording_dir = tmpdir / "recording"
-        recording_dir.mkdir()
+        frames_dir = tmpdir / "frames"
+        frames_dir.mkdir()
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,
+                headless=False,
                 args=[
+                    "--headless=new",
                     "--use-gl=angle",
                     "--enable-webgl",
                     "--ignore-gpu-blocklist",
+                    "--enable-gpu-rasterization",
                 ],
             )
 
             context = browser.new_context(
                 viewport={"width": 1080, "height": 1920},
-                record_video_dir=str(recording_dir),
-                record_video_size={"width": 1080, "height": 1920},
             )
 
             page = context.new_page()
 
-            # Navigate to the template
-            template_url = TEMPLATE_PATH.as_uri()
-            page.goto(template_url, wait_until="networkidle")
+            # Capture console messages for debugging
+            console_messages = []
+            page.on("console", lambda msg: console_messages.append(
+                f"[{msg.type}] {msg.text}"
+            ))
 
-            # Wait for the viewer to initialize
+            # Navigate to the template via HTTP
+            page.goto(
+                f"http://127.0.0.1:{port}/flyin.html",
+                wait_until="networkidle",
+            )
+
+            # Wait for the page to signal readiness
             page.wait_for_function("window._viewerReady === true", timeout=30000)
 
             # Inject the town-specific configuration
             page.evaluate(f"FLYIN_CONFIG = {json.dumps(flyin_config)}")
 
-            # Re-initialize the viewer with the new config (token, etc.)
+            # Initialize the viewer with the injected config
             page.evaluate("initViewer()")
 
-            # Wait for initial tiles to load
-            page.wait_for_timeout(3000)
+            # Wait for initial globe tiles to load
+            page.wait_for_timeout(5000)
 
-            # Start the animation
-            page.evaluate("startFlyIn()")
+            # Capture frames one at a time
+            fps = 30
+            total_frames = int(duration_sec * fps)
+            print(f"  Capturing {total_frames} frames at {fps}fps...")
 
-            # Wait for animation to complete (duration + buffer for tile loading)
-            timeout_ms = int((duration_sec + 5) * 1000)
-            try:
-                page.wait_for_function(
-                    "window._flyInComplete === true",
-                    timeout=timeout_ms,
-                )
-            except Exception:
-                print("  Warning: Animation may not have completed fully")
+            for i in range(total_frames):
+                elapsed_ms = (i / fps) * 1000
+                # Position camera + wait for tiles at this frame
+                page.evaluate(f"setAnimationTime({elapsed_ms})")
+                # Capture the frame
+                frame_path = frames_dir / f"frame_{i:05d}.png"
+                page.screenshot(path=str(frame_path))
 
-            # Hold for a brief moment after completion for the last frames
-            page.wait_for_timeout(500)
+                # Progress every 3 seconds of video
+                if (i + 1) % (fps * 3) == 0 or i == total_frames - 1:
+                    pct = int((i + 1) / total_frames * 100)
+                    print(f"    {pct}% ({i + 1}/{total_frames} frames)")
 
-            # Close context to finalize the video recording
+            # Print console errors if any
+            errors = [m for m in console_messages if m.startswith("[error]")]
+            if errors:
+                print(f"  Browser errors ({len(errors)}):")
+                for err in errors[:5]:
+                    print(f"    {err[:200]}")
+
             page.close()
             context.close()
             browser.close()
 
-        # Find the recorded video (Playwright saves as .webm)
-        recordings = list(recording_dir.glob("*.webm"))
-        if not recordings:
-            raise RuntimeError("No video recording produced by Playwright")
-
-        raw_video = recordings[0]
-
-        # Re-encode with ffmpeg: trim to exact duration, set bitrate, output as MP4
+        # Assemble frames into MP4 with ffmpeg
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
-            "-i", str(raw_video),
-            "-t", str(duration_sec + 1),  # slight buffer
+            "-framerate", str(fps),
+            "-i", str(frames_dir / "frame_%05d.png"),
             "-c:v", "libx264",
             "-preset", "medium",
             "-crf", "18",
             "-pix_fmt", "yuv420p",
-            "-an",  # no audio
+            "-an",
             "-movflags", "+faststart",
             str(output_path),
         ]
@@ -285,7 +309,9 @@ def render_flyin(flyin_config, output_path, cfg):
         )
         if result.returncode != 0:
             print(f"  ffmpeg error: {result.stderr[:500]}", file=sys.stderr)
-            raise RuntimeError("ffmpeg re-encoding failed")
+            raise RuntimeError("ffmpeg encoding failed")
+    finally:
+        httpd.shutdown()
 
     return output_path
 
