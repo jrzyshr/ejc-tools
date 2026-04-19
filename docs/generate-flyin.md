@@ -1,6 +1,6 @@
 # generate_flyin.py
 
-Generates Google Earth-style fly-in videos for NJ municipalities. Renders a 3D globe fly-in animation using Cesium.js in a headless browser (Playwright), zooming from a world view down to the town's border with a red border overlay fading in at the end.
+Generates Google Earth-style fly-in videos for NJ municipalities. Renders a 3D globe fly-in animation using Cesium.js in a headless browser (Playwright), zooming from a world view down to the town's border. The red border overlay is visible throughout the animation, zooming in naturally with the camera.
 
 Replaces the manual workflow of screen-recording a Google Earth search on an iPhone, which required manually dismissing info cards, cropping out UI elements, and syncing files via OneDrive.
 
@@ -41,7 +41,7 @@ python scripts/generate_flyin.py --town "Washington Township" --county Morris
 
 ### Custom duration
 
-The default animation is 9 seconds. All five animation phases scale proportionally:
+The default animation is 9 seconds. All four animation phases scale proportionally:
 
 ```bash
 python scripts/generate_flyin.py --town "Hoboken" --duration 6
@@ -86,15 +86,14 @@ python scripts/generate_flyin.py --town "Hoboken" \
 
 ## Animation Phases
 
-The animation consists of five phases, each defined as a percentage of the total duration. Changing `--duration` scales all phases proportionally:
+The animation consists of four phases, each defined as a percentage of the total duration. The border overlay is visible throughout all phases — it starts as a tiny speck at globe altitude and grows naturally as the camera zooms in. Changing `--duration` scales all phases proportionally:
 
 | Phase | Description | Default % | At 9s | At 6s | At 12s |
 |-------|-------------|-----------|-------|-------|--------|
 | Globe hold | Slow drift centering on eastern US | 0–11% | 0–1.0s | 0–0.7s | 0–1.3s |
 | Globe → state | Zoom from globe to NJ state level | 11–44% | 1.0–4.0s | 0.7–2.6s | 1.3–5.3s |
 | State → town | Zoom from state to town level | 44–72% | 4.0–6.5s | 2.6–4.3s | 5.3–8.6s |
-| Border fade-in | Red border polygon fades in | 72–89% | 6.5–8.0s | 4.3–5.3s | 8.6–10.7s |
-| Final hold | Hold framed view with border | 89–100% | 8.0–9.0s | 5.3–6.0s | 10.7–12.0s |
+| Final hold | Hold framed view with border | 72–100% | 6.5–9.0s | 4.3–6.0s | 8.6–12.0s |
 
 Phase percentages are configurable in `config.json` under `flyin.phases_pct`.
 

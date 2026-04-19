@@ -44,8 +44,7 @@ var FLYIN_CONFIG = {
     globe_hold: [0, 11],
     globe_to_state: [11, 44],
     state_to_town: [44, 72],
-    border_fade_in: [72, 89],
-    final_hold: [89, 100]
+    final_hold: [72, 100]
   },
   cameraStartAltitude: 20000000,
   cameraEndAltitudeOffset: 5000,
@@ -68,12 +67,14 @@ function computeEndAltitude() {
   // Calculate camera altitude from bounding box to frame the town
   var lngSpan = FLYIN_CONFIG.boundsEast - FLYIN_CONFIG.boundsWest;
   var latSpan = FLYIN_CONFIG.boundsNorth - FLYIN_CONFIG.boundsSouth;
-  var maxSpanDeg = Math.max(lngSpan, latSpan);
+  // Use lat span scaled for 9:16 aspect ratio — the vertical FOV matters more
+  // than the horizontal, so weight lat more heavily
+  var effectiveSpan = Math.max(lngSpan * (16 / 9), latSpan);
   // Rough conversion: 1 degree ≈ 111km, then altitude ≈ span * factor
-  // Factor tuned so the town fills ~60% of the vertical frame in 9:16
-  var spanMeters = maxSpanDeg * 111000;
-  var altitude = spanMeters * 2.5 + FLYIN_CONFIG.cameraEndAltitudeOffset;
-  return Math.max(altitude, 3000); // minimum 3km
+  // Factor tuned so the town fills ~90% of the frame with slim margin
+  var spanMeters = effectiveSpan * 111000;
+  var altitude = spanMeters * 0.9 + FLYIN_CONFIG.cameraEndAltitudeOffset;
+  return Math.max(altitude, 2000); // minimum 2km
 }
 
 var viewer, borderEntity;
@@ -138,8 +139,6 @@ function initViewer() {
     }
   });
 
-  // Border entities are created on-demand during the animation
-  // (creating at alpha=0 causes Cesium to skip rendering them)
   window._borderCreated = false;
 }
 
@@ -148,25 +147,34 @@ function addBorderEntity(alpha) {
   // (Cesium Entity polylines don't render reliably in headless Chrome)
   var geojson = FLYIN_CONFIG.geojson;
   window._borderAlpha = alpha;
-  window._borderRings = [];
+  // Each entry: { exterior: [[lng,lat],...], holes: [[[lng,lat],...], ...] }
+  window._borderPolygons = [];
 
-  function extractRing(ring) {
+  function closeRing(ring) {
     var coords = ring.map(function(c) { return [c[0], c[1]]; });
-    // Close ring if needed
     var first = coords[0];
     var last = coords[coords.length - 1];
     if (first[0] !== last[0] || first[1] !== last[1]) {
       coords.push([first[0], first[1]]);
     }
-    window._borderRings.push(coords);
+    return coords;
+  }
+
+  function extractPolygon(rings) {
+    // rings[0] = exterior ring, rings[1..n] = interior rings (holes)
+    var poly = { exterior: closeRing(rings[0]), holes: [] };
+    for (var i = 1; i < rings.length; i++) {
+      poly.holes.push(closeRing(rings[i]));
+    }
+    window._borderPolygons.push(poly);
   }
 
   if (geojson.geometry.type === 'MultiPolygon') {
     geojson.geometry.coordinates.forEach(function(polygon) {
-      extractRing(polygon[0]);
+      extractPolygon(polygon);
     });
   } else {
-    extractRing(geojson.geometry.coordinates[0]);
+    extractPolygon(geojson.geometry.coordinates);
   }
 
   // Create the overlay canvas
@@ -185,9 +193,41 @@ function addBorderEntity(alpha) {
   drawBorderOverlay();
 }
 
+function projectRing(ring) {
+  var pts = [];
+  ring.forEach(function(coord) {
+    var cartesian = Cesium.Cartesian3.fromDegrees(coord[0], coord[1]);
+    var screenPos = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, cartesian);
+    if (screenPos) {
+      pts.push(screenPos);
+    }
+  });
+  return pts;
+}
+
+function ringBboxSpan(pts) {
+  // Returns the max of width/height of the bounding box of projected points
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (var i = 0; i < pts.length; i++) {
+    if (pts[i].x < minX) minX = pts[i].x;
+    if (pts[i].x > maxX) maxX = pts[i].x;
+    if (pts[i].y < minY) minY = pts[i].y;
+    if (pts[i].y > maxY) maxY = pts[i].y;
+  }
+  return Math.max(maxX - minX, maxY - minY);
+}
+
+function traceRingPath(ctx, pts) {
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (var i = 1; i < pts.length; i++) {
+    ctx.lineTo(pts[i].x, pts[i].y);
+  }
+  ctx.closePath();
+}
+
 function drawBorderOverlay() {
   var canvas = window._borderCanvas;
-  if (!canvas || !window._borderRings) return;
+  if (!canvas || !window._borderPolygons) return;
   var ctx = canvas.getContext('2d');
   var alpha = window._borderAlpha || 0;
   var rgb = hexToRgb(FLYIN_CONFIG.borderColor);
@@ -195,39 +235,44 @@ function drawBorderOverlay() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (alpha <= 0) return;
 
-  window._borderRings.forEach(function(ring) {
-    // Project each coordinate to screen space
-    var screenPts = [];
-    ring.forEach(function(coord) {
-      var cartesian = Cesium.Cartesian3.fromDegrees(coord[0], coord[1]);
-      var screenPos = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, cartesian);
-      if (screenPos) {
-        screenPts.push(screenPos);
-      }
+  window._borderPolygons.forEach(function(poly) {
+    var extPts = projectRing(poly.exterior);
+    if (extPts.length < 3) return;
+
+    // Skip drawing if projected shape is too small (< 5px span)
+    if (ringBboxSpan(extPts) < 5) return;
+
+    // Project hole rings
+    var holePtsList = [];
+    poly.holes.forEach(function(hole) {
+      var pts = projectRing(hole);
+      if (pts.length >= 3) holePtsList.push(pts);
     });
 
-    if (screenPts.length < 3) return;
-
-    // Draw filled polygon
+    // Fill exterior with holes cut out using evenodd rule
     ctx.beginPath();
-    ctx.moveTo(screenPts[0].x, screenPts[0].y);
-    for (var i = 1; i < screenPts.length; i++) {
-      ctx.lineTo(screenPts[i].x, screenPts[i].y);
-    }
-    ctx.closePath();
+    traceRingPath(ctx, extPts);
+    holePtsList.forEach(function(holePts) {
+      traceRingPath(ctx, holePts);
+    });
     ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (alpha * 0.15) + ')';
-    ctx.fill();
+    ctx.fill('evenodd');
 
-    // Draw thick border outline
+    // Stroke exterior outline
     ctx.beginPath();
-    ctx.moveTo(screenPts[0].x, screenPts[0].y);
-    for (var j = 1; j < screenPts.length; j++) {
-      ctx.lineTo(screenPts[j].x, screenPts[j].y);
-    }
-    ctx.closePath();
+    traceRingPath(ctx, extPts);
     ctx.strokeStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 10;
     ctx.stroke();
+
+    // Stroke hole outlines
+    holePtsList.forEach(function(holePts) {
+      ctx.beginPath();
+      traceRingPath(ctx, holePts);
+      ctx.strokeStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')';
+      ctx.lineWidth = 10;
+      ctx.stroke();
+    });
   });
 }
 
@@ -332,12 +377,8 @@ function applyAnimationFrame(elapsedMs) {
 
   var elapsed = Math.min(elapsedMs, duration);
 
-  // Two-phase layout:
-  //   Zoom phase: 0% – 75% of duration — continuous zoom from globe to town
-  //   Border+hold: 75% – 100% — fade in border and hold
+  // Zoom occupies 0–75% of duration; border is always visible (zooms in naturally)
   var zoomEnd = 0.75;
-  var borderStart = 0.70; // slight overlap so border starts during final zoom
-  var borderEnd = 0.90;
 
   // Overall zoom progress (0..1)
   var zoomT = Math.min(elapsed / (duration * zoomEnd), 1.0);
@@ -358,22 +399,17 @@ function applyAnimationFrame(elapsedMs) {
     orientation: { heading: 0, pitch: pitchRad, roll: 0 }
   });
 
-  // Border fade-in
-  var borderProgress = (elapsed / duration - borderStart) / (borderEnd - borderStart);
-  if (borderProgress > 0 && cfg.showBorder && cfg.geojson) {
-    var alpha = lerp(0, cfg.borderOpacity, easeInOutCubic(Math.min(borderProgress, 1.0)));
+  // Border is always visible — create on first frame, redraw every frame
+  if (cfg.showBorder && cfg.geojson) {
     if (!window._borderCreated) {
-      addBorderEntity(alpha);
+      addBorderEntity(cfg.borderOpacity);
       window._borderCreated = true;
     } else {
-      setBorderAlpha(alpha);
+      drawBorderOverlay();
     }
   }
 
   if (elapsed >= duration) {
-    if (cfg.showBorder && borderEntity) {
-      setBorderAlpha(cfg.borderOpacity);
-    }
     return true;
   }
 

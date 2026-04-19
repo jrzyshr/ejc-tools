@@ -107,14 +107,13 @@
   "flyin": {
     "duration_seconds": 9,
     "camera_start_altitude_m": 20000000,
-    "camera_end_altitude_offset_m": 5000,
+    "camera_end_altitude_offset_m": 1000,
     "camera_pitch_degrees": -30,
     "phases_pct": {
       "globe_hold": [0, 11],
       "globe_to_state": [11, 44],
       "state_to_town": [44, 72],
-      "border_fade_in": [72, 89],
-      "final_hold": [89, 100]
+      "final_hold": [72, 100]
     },
     "border_color": "#FF0000",
     "border_opacity": 0.8,
