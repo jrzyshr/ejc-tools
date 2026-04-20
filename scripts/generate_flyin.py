@@ -28,6 +28,7 @@ Usage:
 """
 
 import argparse
+import base64
 import csv
 import http.server
 import json
@@ -53,6 +54,7 @@ from utils.nj_geodata import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = REPO_ROOT / "templates" / "flyin.html"
+LOGO_PATH = REPO_ROOT / "images" / "ejclogo-transparent.png"
 
 
 def load_config():
@@ -149,7 +151,63 @@ def check_ffmpeg():
         sys.exit(1)
 
 
-def build_flyin_config(town_row, cfg, token, duration=None, show_border=True):
+def _get_municipality_type(town_row):
+    """Extract municipality type (Township, Borough, etc.) from NAMELSAD."""
+    name = town_row.get("name_clean", town_row.get("NAME", ""))
+    namelsad = town_row.get("namelsad_clean", town_row.get("NAMELSAD", ""))
+    if namelsad.startswith(name):
+        suffix = namelsad[len(name):].strip()
+        if suffix:
+            return suffix.title()  # "township" -> "Township"
+    return ""
+
+
+def get_disambiguation_info(town_row, gdf):
+    """
+    Determine if a town needs type and/or county disambiguation.
+
+    Returns a dict with:
+      need_type: bool - True if same NAME exists with different type in same county
+      type_name: str  - e.g. "Township", "Borough"
+      need_county: bool - True if same NAME exists in multiple counties
+      county_name: str  - e.g. "Monmouth"
+    """
+    name = town_row.get("name_clean", town_row.get("NAME", ""))
+    county_fips = town_row.get("COUNTYFP", "")
+    type_name = _get_municipality_type(town_row)
+    county_name = get_county_name(county_fips)
+
+    # Check if same NAME exists with different type in same county
+    same_name_same_county = gdf[
+        (gdf["name_clean"] == name) & (gdf["COUNTYFP"] == county_fips)
+    ]
+    need_type = len(same_name_same_county) > 1
+
+    # Check if same NAME exists in multiple counties
+    same_name_all = gdf[gdf["name_clean"] == name]
+    counties_with_name = same_name_all["COUNTYFP"].unique()
+    need_county = len(counties_with_name) > 1
+
+    return {
+        "need_type": need_type,
+        "type_name": type_name,
+        "need_county": need_county,
+        "county_name": county_name,
+    }
+
+
+def _load_logo_data_uri():
+    """Read the EJC logo and return a base64 data URI."""
+    if not LOGO_PATH.exists():
+        return ""
+    with open(LOGO_PATH, "rb") as f:
+        data = f.read()
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:image/png;base64,{b64}"
+
+
+def build_flyin_config(town_row, cfg, token, duration=None, show_border=True,
+                       gdf=None, town_number=None, alias_name=None):
     """Build the JavaScript config object to inject into the Cesium page."""
     centroid_lng, centroid_lat = get_centroid_wgs84(town_row)
     west, south, east, north = get_bounds_wgs84(town_row)
@@ -157,6 +215,31 @@ def build_flyin_config(town_row, cfg, token, duration=None, show_border=True):
     geojson = to_geojson(town_row) if show_border else None
 
     dur = duration or cfg.get("duration_seconds", 9)
+
+    # Overlay data
+    display_name = get_display_name(town_row)
+    disambig = get_disambiguation_info(town_row, gdf) if gdf is not None else {
+        "need_type": False, "type_name": "",
+        "need_county": False, "county_name": "",
+    }
+    logo_data_uri = _load_logo_data_uri()
+
+    # Overlay config values — per-overlay with inheritance
+    overlay_cfg = cfg.get("overlay", {})
+    tn_cfg = overlay_cfg.get("town_number", {})
+    tname_cfg = overlay_cfg.get("town_name", {})
+    county_cfg = tname_cfg.get("county", {})
+    alias_cfg = tname_cfg.get("alias", {})
+
+    def _sub_val(sub_cfg, parent_cfg, key, default):
+        """Get value from sub-element config, falling back to parent."""
+        val = sub_cfg.get(key)
+        if val is not None:
+            return val
+        val = parent_cfg.get(key)
+        if val is not None:
+            return val
+        return default
 
     return {
         "token": token,
@@ -180,6 +263,72 @@ def build_flyin_config(town_row, cfg, token, duration=None, show_border=True):
         "borderColor": cfg.get("border_color", "#FF0000"),
         "borderOpacity": cfg.get("border_opacity", 0.8),
         "showBorder": show_border,
+        # Overlay fields
+        "townNumber": town_number or "",
+        "townDisplayName": display_name,
+        "needType": disambig["need_type"],
+        "typeName": disambig["type_name"],
+        "needCounty": disambig["need_county"],
+        "countyName": disambig["county_name"],
+        "aliasName": alias_name or "",
+        "logoDataUri": logo_data_uri,
+        # Per-overlay config — town number
+        "overlayTownNumber": {
+            "fontFamily": tn_cfg.get("font_family", "Source Sans 3"),
+            "fontSize": tn_cfg.get("font_size_px", 160),
+            "fontWeight": tn_cfg.get("font_weight", 900),
+            "fontStyle": tn_cfg.get("font_style", "normal"),
+            "fontColor": tn_cfg.get("font_color", "#FFFFFF"),
+            "outlineColor": tn_cfg.get("outline_color", "#000000"),
+            "outlineSize": tn_cfg.get("outline_size_px", 8),
+            "topPct": tn_cfg.get("top_pct", 25),
+            "shadowBlur": tn_cfg.get("shadow_blur_px", 0),
+            "shadowDistance": tn_cfg.get("shadow_distance_px", 10),
+            "shadowAngle": tn_cfg.get("shadow_angle_deg", 135),
+        },
+        # Per-overlay config — town name
+        "overlayTownName": {
+            "fontFamily": tname_cfg.get("font_family", "Source Sans 3"),
+            "fontSizeMax": tname_cfg.get("font_size_max_px", 250),
+            "fontSizeMin": tname_cfg.get("font_size_min_px", 100),
+            "fontWeight": tname_cfg.get("font_weight", 900),
+            "fontStyle": tname_cfg.get("font_style", "normal"),
+            "fontColor": tname_cfg.get("font_color", "#FFFFFF"),
+            "outlineColor": tname_cfg.get("outline_color", "#000000"),
+            "outlineSize": tname_cfg.get("outline_size_px", 8),
+            "bottomPct": tname_cfg.get("bottom_pct", 25),
+            "shadowBlur": tname_cfg.get("shadow_blur_px", 0),
+            "shadowDistance": tname_cfg.get("shadow_distance_px", 10),
+            "shadowAngle": tname_cfg.get("shadow_angle_deg", 135),
+            "county": {
+                "fontFamily": _sub_val(county_cfg, tname_cfg, "font_family", "Source Sans 3"),
+                "fontSizeRatio": county_cfg.get("font_size_ratio", 0.65),
+                "fontWeight": _sub_val(county_cfg, tname_cfg, "font_weight", 900),
+                "fontStyle": _sub_val(county_cfg, tname_cfg, "font_style", "normal"),
+                "fontColor": _sub_val(county_cfg, tname_cfg, "font_color", "#FFFFFF"),
+                "outlineColor": _sub_val(county_cfg, tname_cfg, "outline_color", "#000000"),
+                "outlineSizeRatio": county_cfg.get("outline_size_ratio", 0.75),
+                "shadowBlur": _sub_val(county_cfg, tname_cfg, "shadow_blur_px", 0),
+                "shadowDistance": _sub_val(county_cfg, tname_cfg, "shadow_distance_px", 10),
+                "shadowAngle": _sub_val(county_cfg, tname_cfg, "shadow_angle_deg", 135),
+            },
+            "alias": {
+                "fontFamily": _sub_val(alias_cfg, tname_cfg, "font_family", "Source Sans 3"),
+                "fontSizeRatio": alias_cfg.get("font_size_ratio", 0.65),
+                "fontWeight": _sub_val(alias_cfg, tname_cfg, "font_weight", 900),
+                "fontStyle": _sub_val(alias_cfg, tname_cfg, "font_style", "normal"),
+                "fontColor": _sub_val(alias_cfg, tname_cfg, "font_color", "#FFFFFF"),
+                "outlineColor": _sub_val(alias_cfg, tname_cfg, "outline_color", "#000000"),
+                "outlineSizeRatio": alias_cfg.get("outline_size_ratio", 0.75),
+                "shadowBlur": _sub_val(alias_cfg, tname_cfg, "shadow_blur_px", 0),
+                "shadowDistance": _sub_val(alias_cfg, tname_cfg, "shadow_distance_px", 10),
+                "shadowAngle": _sub_val(alias_cfg, tname_cfg, "shadow_angle_deg", 135),
+            },
+        },
+        # Logo
+        "overlayLogoSize": overlay_cfg.get("logo_size_px", 600),
+        "overlayLogoBottom": overlay_cfg.get("logo_bottom_px", 40),
+        "overlayLogoRight": overlay_cfg.get("logo_right_px", 40),
     }
 
 
@@ -254,6 +403,14 @@ def render_flyin(flyin_config, output_path, cfg):
             # Initialize the viewer with the injected config
             page.evaluate("initViewer()")
 
+            # Load configured Google Fonts (must complete before overlay setup)
+            page.evaluate("loadConfiguredFonts()")
+            page.evaluate("document.fonts.ready")
+            page.wait_for_timeout(500)
+
+            # Set up text overlays and logo
+            page.evaluate("setupOverlays()")
+
             # Wait for initial globe tiles to load
             page.wait_for_timeout(5000)
 
@@ -316,7 +473,8 @@ def render_flyin(flyin_config, output_path, cfg):
 
 
 def generate_single(town_name, county=None, output_dir=None, town_number=None,
-                    preview=False, duration=None, no_border=False, config=None):
+                    preview=False, duration=None, no_border=False, config=None,
+                    alias_name=None):
     """Generate fly-in video for a single town."""
     cfg = load_config()
     if config:
@@ -338,6 +496,9 @@ def generate_single(town_name, county=None, output_dir=None, town_number=None,
         town, cfg, token,
         duration=duration,
         show_border=not no_border,
+        gdf=gdf,
+        town_number=town_number,
+        alias_name=alias_name,
     )
 
     output_path = get_output_path(display_name, town_number, output_dir, cfg)
@@ -388,6 +549,8 @@ def generate_all(output_dir=None, duration=None, no_border=False, config=None):
                 town_row, cfg, token,
                 duration=duration,
                 show_border=not no_border,
+                gdf=gdf,
+                town_number=town_num,
             )
 
             output_path = get_output_path(display_name, town_num, output_dir, cfg)
@@ -417,6 +580,10 @@ def main():
     parser.add_argument("--preview", action="store_true", help="Open result in player")
     parser.add_argument("--town-number", help="Town visit number (for folder naming)")
     parser.add_argument(
+        "--alias-name",
+        help="Alternate name for the town, shown as '(aka <name>)' in the overlay",
+    )
+    parser.add_argument(
         "--duration", type=float,
         help="Animation duration in seconds (default: from config, 9s). "
              "All animation phases scale proportionally.",
@@ -443,6 +610,7 @@ def main():
             preview=args.preview,
             duration=args.duration,
             no_border=args.no_border,
+            alias_name=args.alias_name,
         )
 
 

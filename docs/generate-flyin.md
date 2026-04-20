@@ -69,6 +69,14 @@ python scripts/generate_flyin.py --town "Hoboken" \
   --preview
 ```
 
+### With alias name
+
+```bash
+python scripts/generate_flyin.py --town "Hoboken" \
+  --town-number 1 \
+  --alias-name "Mile Square City"
+```
+
 ## CLI Arguments
 
 | Argument | Required | Description |
@@ -77,7 +85,8 @@ python scripts/generate_flyin.py --town "Hoboken" \
 | `--all` | Yes (or `--town`) | Generate fly-ins for all 564 towns |
 | `--county NAME` | No | County name for disambiguation (e.g., `Mercer`) |
 | `--output-dir PATH` | No | Output base directory (default: `assets/`) |
-| `--town-number N` | No | Town visit number, used in folder naming |
+| `--town-number N` | No | Town visit number, used in folder naming and "New Jersey Town #N" overlay |
+| `--alias-name NAME` | No | Alternate name shown as "(aka NAME)" in the town name overlay |
 | `--duration SECONDS` | No | Animation duration (default from config: 9s). All phases scale proportionally. |
 | `--preview` | No | Open the resulting video in the default player |
 | `--no-border` | No | Skip the red border polygon overlay |
@@ -101,6 +110,8 @@ Phase percentages are configurable in `config.json` under `flyin.phases_pct`.
 
 Settings are read from the `flyin` section of `config.json`:
 
+### General
+
 | Key | Default | Description |
 |-----|---------|-------------|
 | `duration_seconds` | `9` | Default animation duration |
@@ -114,6 +125,124 @@ Settings are read from the `flyin` section of `config.json`:
 | `output_filename` | `flyin.mp4` | Output filename within the town's asset folder |
 
 The `--duration` CLI argument overrides `duration_seconds`.
+
+### Overlay: Town Number (`overlay.town_number`)
+
+Controls the "New Jersey Town #N" text overlay.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `font_family` | `Source Sans 3` | Google Fonts family name |
+| `font_size_px` | `160` | Maximum font size (auto-shrinks to fit) |
+| `font_weight` | `900` | CSS font weight (100–900) |
+| `font_style` | `normal` | CSS font style (`normal`, `italic`, `oblique`) |
+| `font_color` | `#FFFFFF` | Text color (hex) |
+| `outline_color` | `#000000` | Text outline color (hex) |
+| `outline_size_px` | `8` | Text outline width in pixels |
+| `top_pct` | `25` | Vertical position as % from top of video |
+| `shadow_blur_px` | `0` | Drop shadow blur radius in pixels |
+| `shadow_distance_px` | `10` | Drop shadow offset distance in pixels |
+| `shadow_angle_deg` | `135` | Drop shadow direction in degrees (0=right, 90=down, 135=bottom-left) |
+
+### Overlay: Town Name (`overlay.town_name`)
+
+Controls the town name text that appears when the zoom completes.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `font_family` | `Source Sans 3` | Google Fonts family name |
+| `font_size_max_px` | `250` | Maximum font size (auto-shrinks for long names) |
+| `font_size_min_px` | `100` | Minimum font size floor |
+| `font_weight` | `900` | CSS font weight (100–900) |
+| `font_style` | `normal` | CSS font style (`normal`, `italic`, `oblique`) |
+| `font_color` | `#FFFFFF` | Text color (hex) |
+| `outline_color` | `#000000` | Text outline color (hex) |
+| `outline_size_px` | `8` | Text outline width in pixels |
+| `bottom_pct` | `25` | Vertical position as % from bottom of video |
+| `shadow_blur_px` | `0` | Drop shadow blur radius in pixels |
+| `shadow_distance_px` | `10` | Drop shadow offset distance in pixels |
+| `shadow_angle_deg` | `135` | Drop shadow direction in degrees |
+
+#### County sub-element (`overlay.town_name.county`)
+
+Controls the county name line shown for disambiguation. Each setting inherits its value from the parent `overlay.town_name` by default, but can be overridden by setting it directly in this section.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `font_family` | *(inherits)* | Google Fonts family name |
+| `font_size_ratio` | `0.65` | Font size as ratio of the computed town name size |
+| `font_weight` | *(inherits)* | CSS font weight |
+| `font_style` | *(inherits)* | CSS font style (`normal`, `italic`, `oblique`) |
+| `font_color` | *(inherits)* | Text color (hex) |
+| `outline_color` | *(inherits)* | Text outline color (hex) |
+| `outline_size_ratio` | `0.75` | Outline width as ratio of the parent outline size |
+| `shadow_blur_px` | *(inherits)* | Drop shadow blur radius |
+| `shadow_distance_px` | *(inherits)* | Drop shadow offset distance |
+| `shadow_angle_deg` | *(inherits)* | Drop shadow direction in degrees |
+
+#### Alias sub-element (`overlay.town_name.alias`)
+
+Controls the "(aka …)" line. Each setting inherits its value from the parent `overlay.town_name` by default, but can be overridden by setting it directly in this section.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `font_family` | *(inherits)* | Google Fonts family name |
+| `font_size_ratio` | `0.65` | Font size as ratio of the computed town name size |
+| `font_weight` | *(inherits)* | CSS font weight |
+| `font_style` | *(inherits)* | CSS font style (`normal`, `italic`, `oblique`) |
+| `font_color` | *(inherits)* | Text color (hex) |
+| `outline_color` | *(inherits)* | Text outline color (hex) |
+| `outline_size_ratio` | `0.75` | Outline width as ratio of the parent outline size |
+| `shadow_blur_px` | *(inherits)* | Drop shadow blur radius |
+| `shadow_distance_px` | *(inherits)* | Drop shadow offset distance |
+| `shadow_angle_deg` | *(inherits)* | Drop shadow direction in degrees |
+
+### Overlay: Logo
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `overlay.logo_size_px` | `600` | EJC logo dimensions in pixels (square) |
+| `overlay.logo_bottom_px` | `40` | Logo margin from bottom edge |
+| `overlay.logo_right_px` | `40` | Logo margin from right edge |
+
+## Text Overlays
+
+The fly-in video includes text overlays and a logo that appear over the map animation:
+
+### Overlay 1: Town Number
+
+- **Text**: "New Jersey Town #N" (only shown when `--town-number` is provided)
+- **Position**: Centered horizontally, configurable vertical position via `top_pct` (default: 25% from top)
+- **Timing**: Visible for the entire duration of the video
+- **Font**: Configurable via `overlay.town_number.*` — defaults to Source Sans 3, weight 900, 160px, white with black outline
+- **Shadow**: Configurable directional drop shadow (see below)
+
+### Overlay 2: Town Name
+
+- **Position**: Centered horizontally, configurable vertical position via `bottom_pct` (default: 25% from bottom)
+- **Timing**: Appears at the instant the zoom animation completes (75% mark)
+- **Font**: Configurable via `overlay.town_name.*` — defaults to Source Sans 3, weight 900, dynamically sized 100–250px based on text length
+- **Disambiguation rules** (applied independently):
+  - **Type suffix**: If the same town name exists with different types in the same county (e.g., Freehold Borough & Freehold Township in Monmouth), the type is appended to the name
+  - **County line**: If the same town name exists in multiple counties statewide (e.g., Washington, Franklin), the county name appears on a second line. Font settings configurable independently via `overlay.town_name.county.*` (inherits from parent `town_name` by default)
+  - **Font size ratio**: County text defaults to 65% of the computed town name font size
+- **Alias**: If `--alias-name` is provided, "(aka <name>)" appears as an additional line. Font settings configurable independently via `overlay.town_name.alias.*` (inherits from parent `town_name` by default)
+
+### Drop Shadow
+
+Each text overlay has configurable directional drop shadow properties:
+
+- **`shadow_blur_px`** — Gaussian blur radius (default: `0` = sharp shadow)
+- **`shadow_distance_px`** — Offset distance from the text (default: `10`)
+- **`shadow_angle_deg`** — Direction angle in degrees where 0°=right, 90°=down, 135°=bottom-left (default: `135`)
+
+Shadow is set independently for the town number and town name overlays. County and alias sub-elements inherit shadow settings from their parent `town_name` unless explicitly overridden.
+
+### EJC Logo
+
+- **Image**: `images/ejclogo-transparent.png`
+- **Position**: Bottom-right corner, configurable margins
+- **Timing**: Visible from the start of the video, disappears at the same instant Overlay 2 appears
 
 ## Output
 

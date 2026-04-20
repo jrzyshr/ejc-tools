@@ -5,6 +5,7 @@
 <title>EJC Fly-in</title>
 <script src="https://cesium.com/downloads/cesiumjs/releases/1.125/Build/Cesium/Cesium.js"></script>
 <link href="https://cesium.com/downloads/cesiumjs/releases/1.125/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@700;900&display=swap" rel="stylesheet">
 <style>
   html, body, #cesiumContainer {
     margin: 0; padding: 0;
@@ -23,10 +24,76 @@
   .cesium-credit-expand-link {
     display: none !important;
   }
+
+  /* ---- Text overlay shared styles ---- */
+  /* font-family, font-weight, color set dynamically by setupOverlays() */
+  .overlay-text {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    pointer-events: none;
+    z-index: 20;
+    font-family: sans-serif;
+    font-weight: 900;
+    color: #FFFFFF;
+    white-space: nowrap;
+  }
+
+  /* Overlay 1: "New Jersey Town #N" */
+  #townNumberOverlay {
+    top: 25%;
+    transform: translateY(-50%);
+    font-size: 160px;
+    line-height: 1.1;
+    padding: 0 40px;
+    box-sizing: border-box;
+  }
+
+  /* Overlay 2: Town name + optional county/alias */
+  #townNameOverlay {
+    bottom: 25%;
+    transform: translateY(50%);
+    padding: 0 40px;
+    box-sizing: border-box;
+    opacity: 0;
+  }
+
+  #townNameOverlay .town-name-line {
+    line-height: 1.1;
+    /* font-size set dynamically by JS */
+  }
+
+  #townNameOverlay .county-line,
+  #townNameOverlay .alias-line {
+    line-height: 1.2;
+    /* font-size set dynamically by JS (smaller than town name) */
+  }
+
+  /* EJC Logo — size and position set dynamically by setupOverlays() */
+  #logoOverlay {
+    position: absolute;
+    z-index: 20;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
 <div id="cesiumContainer"></div>
+
+<!-- Text Overlay 1: Town number (visible entire video) -->
+<div id="townNumberOverlay" class="overlay-text" style="display:none;"></div>
+
+<!-- Text Overlay 2: Town name + county/alias (appears when zoom completes) -->
+<div id="townNameOverlay" class="overlay-text">
+  <div class="town-name-line"></div>
+  <div class="county-line"></div>
+  <div class="alias-line"></div>
+</div>
+
+<!-- EJC Logo (visible from start, disappears when town name appears) -->
+<img id="logoOverlay" src="" alt="" style="display:none;">
+
 <script>
 // ---- Configuration injected by Python ----
 // These globals are set via page.evaluate() before startFlyIn() is called.
@@ -408,6 +475,9 @@ function applyAnimationFrame(elapsedMs) {
     }
   }
 
+  // Update overlay visibility based on zoom progress
+  updateOverlays(zoomT);
+
   if (elapsed >= duration) {
     return true;
   }
@@ -417,6 +487,245 @@ function applyAnimationFrame(elapsedMs) {
 
 // Do NOT initialize viewer on load — wait for Python to inject
 // the config with the Cesium Ion token first, then call initViewer().
+
+// ---- Overlay setup and management ----
+
+/**
+ * Apply text outline and directional shadow effect using CSS text-shadow.
+ * Shadow angle: 0°=right, 90°=down, 135°=bottom-left.
+ */
+function applyTextEffect(el, strokeW, outlineColor, shadowBlur, shadowDistance, shadowAngle) {
+  var oc = outlineColor || '#000000';
+  var s = strokeW;
+  var outlineShadows = [
+    s+'px 0 0 '+oc, (-s)+'px 0 0 '+oc, '0 '+s+'px 0 '+oc, '0 '+(-s)+'px 0 '+oc,
+    s+'px '+s+'px 0 '+oc, (-s)+'px '+s+'px 0 '+oc, s+'px '+(-s)+'px 0 '+oc, (-s)+'px '+(-s)+'px 0 '+oc
+  ];
+  var shadows = outlineShadows.join(', ');
+  var dist = shadowDistance != null ? shadowDistance : 10;
+  var blur = shadowBlur || 0;
+  if (dist > 0 || blur > 0) {
+    var angleRad = ((shadowAngle != null ? shadowAngle : 135)) * Math.PI / 180;
+    var sx = Math.round(Math.cos(angleRad) * dist);
+    var sy = Math.round(Math.sin(angleRad) * dist);
+    shadows += ', ' + sx + 'px ' + sy + 'px ' + blur + 'px rgba(0,0,0,0.8)';
+  }
+  el.style.textShadow = shadows;
+}
+
+/**
+ * Measure text width at a given font size using an off-screen canvas.
+ * Uses the configured font family and weight.
+ */
+function measureTextWidth(text, fontSize, fontWeight, fontFamily, fontStyle) {
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  var style = fontStyle || 'normal';
+  ctx.font = style + ' ' + fontWeight + ' ' + fontSize + 'px "' + fontFamily + '", sans-serif';
+  return ctx.measureText(text).width;
+}
+
+/**
+ * Auto-size text to fit within maxWidth, stepping down from startSize to minSize.
+ * Returns the computed font size.
+ */
+function autoFitFontSize(text, startSize, minSize, maxWidth, fontWeight, fontFamily, fontStyle) {
+  var fontSize = startSize;
+  while (fontSize > minSize) {
+    var w = measureTextWidth(text, fontSize, fontWeight, fontFamily, fontStyle);
+    if (w <= maxWidth) break;
+    fontSize -= 5;
+  }
+  return fontSize;
+}
+
+/**
+ * Dynamically load Google Fonts for all font families used in the config.
+ * Call before setupOverlays() so fonts are available for text measurement.
+ */
+function loadConfiguredFonts() {
+  var cfg = FLYIN_CONFIG;
+  var tn = cfg.overlayTownNumber || {};
+  var tname = cfg.overlayTownName || {};
+  var county = tname.county || {};
+  var alias = tname.alias || {};
+  var families = {};
+  families[tn.fontFamily || 'Source Sans 3'] = true;
+  families[tname.fontFamily || 'Source Sans 3'] = true;
+  families[county.fontFamily || tname.fontFamily || 'Source Sans 3'] = true;
+  families[alias.fontFamily || tname.fontFamily || 'Source Sans 3'] = true;
+  Object.keys(families).forEach(function(family) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=' +
+      encodeURIComponent(family).replace(/%20/g, '+') +
+      ':ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap';
+    document.head.appendChild(link);
+  });
+}
+
+/**
+ * Set up overlay elements from FLYIN_CONFIG. Call after initViewer()
+ * and loadConfiguredFonts().
+ */
+function setupOverlays() {
+  var cfg = FLYIN_CONFIG;
+  var tn = cfg.overlayTownNumber || {};
+  var tname = cfg.overlayTownName || {};
+  var county = tname.county || {};
+  var alias = tname.alias || {};
+  var maxWidth = 1000; // 1080 - 80px padding
+
+  // ---- Overlay 1: Town number ----
+  var numEl = document.getElementById('townNumberOverlay');
+  numEl.style.top = (tn.topPct || 25) + '%';
+  numEl.style.fontFamily = '"' + (tn.fontFamily || 'Source Sans 3') + '", sans-serif';
+  numEl.style.fontWeight = tn.fontWeight || 900;
+  numEl.style.fontStyle = tn.fontStyle || 'normal';
+  numEl.style.color = tn.fontColor || '#FFFFFF';
+
+  if (cfg.townNumber) {
+    var numText = 'New Jersey Town #' + cfg.townNumber;
+    numEl.textContent = numText;
+    var numMaxSize = tn.fontSize || 160;
+    var numFontSize = autoFitFontSize(numText, numMaxSize, 60, maxWidth,
+                                       tn.fontWeight || 900, tn.fontFamily || 'Source Sans 3',
+                                       tn.fontStyle || 'normal');
+    numEl.style.fontSize = numFontSize + 'px';
+    applyTextEffect(numEl, tn.outlineSize || 8, tn.outlineColor || '#000000',
+                    tn.shadowBlur || 0, tn.shadowDistance != null ? tn.shadowDistance : 10,
+                    tn.shadowAngle != null ? tn.shadowAngle : 135);
+    numEl.style.display = 'block';
+  } else {
+    numEl.style.display = 'none';
+  }
+
+  // ---- Overlay 2: Town name ----
+  var nameEl = document.getElementById('townNameOverlay');
+  nameEl.style.bottom = (tname.bottomPct || 25) + '%';
+
+  var nameLineEl = nameEl.querySelector('.town-name-line');
+  var countyLineEl = nameEl.querySelector('.county-line');
+  var aliasLineEl = nameEl.querySelector('.alias-line');
+
+  // Town name line — own font settings
+  nameLineEl.style.fontFamily = '"' + (tname.fontFamily || 'Source Sans 3') + '", sans-serif';
+  nameLineEl.style.fontWeight = tname.fontWeight || 900;
+  nameLineEl.style.fontStyle = tname.fontStyle || 'normal';
+  nameLineEl.style.color = tname.fontColor || '#FFFFFF';
+
+  // Build town name text (with optional type for disambiguation)
+  var townText = cfg.townDisplayName || '';
+  if (cfg.needType && cfg.typeName) {
+    townText += ' ' + cfg.typeName;
+  }
+  nameLineEl.textContent = townText;
+
+  // Dynamic font sizing for town name — auto-shrink to fit
+  var maxSize = tname.fontSizeMax || 250;
+  var minSize = tname.fontSizeMin || 100;
+  var fontSize = autoFitFontSize(townText, maxSize, minSize, maxWidth,
+                                  tname.fontWeight || 900, tname.fontFamily || 'Source Sans 3',
+                                  tname.fontStyle || 'normal');
+  nameLineEl.style.fontSize = fontSize + 'px';
+  applyTextEffect(nameLineEl, tname.outlineSize || 8, tname.outlineColor || '#000000',
+                  tname.shadowBlur || 0, tname.shadowDistance != null ? tname.shadowDistance : 10,
+                  tname.shadowAngle != null ? tname.shadowAngle : 135);
+
+  // County line — own font settings (resolved with inheritance by Python)
+  if (cfg.needCounty && cfg.countyName) {
+    var countyText = cfg.countyName + ' County';
+    countyLineEl.textContent = countyText;
+    countyLineEl.style.display = 'block';
+    countyLineEl.style.fontFamily = '"' + (county.fontFamily || tname.fontFamily || 'Source Sans 3') + '", sans-serif';
+    countyLineEl.style.fontWeight = county.fontWeight || tname.fontWeight || 900;
+    countyLineEl.style.fontStyle = county.fontStyle || tname.fontStyle || 'normal';
+    countyLineEl.style.color = county.fontColor || tname.fontColor || '#FFFFFF';
+
+    var countyMaxSize = Math.round(fontSize * (county.fontSizeRatio || 0.65));
+    var countyMinSize = Math.round(minSize * (county.fontSizeRatio || 0.65));
+    var countyStrokeW = Math.round((tname.outlineSize || 8) * (county.outlineSizeRatio || 0.75));
+    var countySize = autoFitFontSize(countyText, countyMaxSize, countyMinSize, maxWidth,
+                                      county.fontWeight || tname.fontWeight || 900,
+                                      county.fontFamily || tname.fontFamily || 'Source Sans 3',
+                                      county.fontStyle || tname.fontStyle || 'normal');
+    countyLineEl.style.fontSize = countySize + 'px';
+    applyTextEffect(countyLineEl, countyStrokeW, county.outlineColor || tname.outlineColor || '#000000',
+                    county.shadowBlur != null ? county.shadowBlur : (tname.shadowBlur || 0),
+                    county.shadowDistance != null ? county.shadowDistance : (tname.shadowDistance != null ? tname.shadowDistance : 10),
+                    county.shadowAngle != null ? county.shadowAngle : (tname.shadowAngle != null ? tname.shadowAngle : 135));
+  } else {
+    countyLineEl.textContent = '';
+    countyLineEl.style.display = 'none';
+  }
+
+  // Alias line — own font settings (resolved with inheritance by Python)
+  if (cfg.aliasName) {
+    var aliasText = '(aka ' + cfg.aliasName + ')';
+    aliasLineEl.textContent = aliasText;
+    aliasLineEl.style.display = 'block';
+    aliasLineEl.style.fontFamily = '"' + (alias.fontFamily || tname.fontFamily || 'Source Sans 3') + '", sans-serif';
+    aliasLineEl.style.fontWeight = alias.fontWeight || tname.fontWeight || 900;
+    aliasLineEl.style.fontStyle = alias.fontStyle || tname.fontStyle || 'normal';
+    aliasLineEl.style.color = alias.fontColor || tname.fontColor || '#FFFFFF';
+
+    var aliasMaxSize = Math.round(fontSize * (alias.fontSizeRatio || 0.65));
+    var aliasMinSize = Math.round(minSize * (alias.fontSizeRatio || 0.65));
+    var aliasStrokeW = Math.round((tname.outlineSize || 8) * (alias.outlineSizeRatio || 0.75));
+    var aliasSize = autoFitFontSize(aliasText, aliasMaxSize, aliasMinSize, maxWidth,
+                                    alias.fontWeight || tname.fontWeight || 900,
+                                    alias.fontFamily || tname.fontFamily || 'Source Sans 3',
+                                    alias.fontStyle || tname.fontStyle || 'normal');
+    aliasLineEl.style.fontSize = aliasSize + 'px';
+    applyTextEffect(aliasLineEl, aliasStrokeW, alias.outlineColor || tname.outlineColor || '#000000',
+                    alias.shadowBlur != null ? alias.shadowBlur : (tname.shadowBlur || 0),
+                    alias.shadowDistance != null ? alias.shadowDistance : (tname.shadowDistance != null ? tname.shadowDistance : 10),
+                    alias.shadowAngle != null ? alias.shadowAngle : (tname.shadowAngle != null ? tname.shadowAngle : 135));
+  } else {
+    aliasLineEl.textContent = '';
+    aliasLineEl.style.display = 'none';
+  }
+
+  // Start hidden — shown when zoom completes
+  nameEl.style.opacity = '0';
+
+  // ---- Logo ----
+  var logoEl = document.getElementById('logoOverlay');
+  if (cfg.logoDataUri) {
+    logoEl.src = cfg.logoDataUri;
+    var logoSize = cfg.overlayLogoSize || 600;
+    logoEl.style.width = logoSize + 'px';
+    logoEl.style.height = logoSize + 'px';
+    logoEl.style.bottom = (cfg.overlayLogoBottom != null ? cfg.overlayLogoBottom : 40) + 'px';
+    logoEl.style.right = (cfg.overlayLogoRight != null ? cfg.overlayLogoRight : 40) + 'px';
+    logoEl.style.display = 'block';
+  } else {
+    logoEl.style.display = 'none';
+  }
+
+  window._overlaysReady = true;
+}
+
+/**
+ * Update overlay visibility based on animation progress.
+ * Called from applyAnimationFrame().
+ */
+function updateOverlays(zoomT) {
+  if (!window._overlaysReady) return;
+
+  var nameEl = document.getElementById('townNameOverlay');
+  var logoEl = document.getElementById('logoOverlay');
+
+  if (zoomT >= 1.0) {
+    // Zoom complete: show town name, hide logo
+    nameEl.style.opacity = '1';
+    if (logoEl) logoEl.style.display = 'none';
+  } else {
+    // During zoom: hide town name, show logo
+    nameEl.style.opacity = '0';
+    if (logoEl && FLYIN_CONFIG.logoDataUri) logoEl.style.display = 'block';
+  }
+}
 
 // Signal that the page is ready for Playwright
 window._viewerReady = true;
