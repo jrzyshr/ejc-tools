@@ -4,8 +4,9 @@ Generate Google Earth-style fly-in videos for NJ municipalities.
 
 Renders a 3D globe fly-in animation using Cesium.js in a headless browser
 (Playwright), zooming from a world view down to the town's border. The red
-border polygon fades in at the end of the animation. Outputs a 1080x1920
-(9:16) MP4 video ready for Instagram Reels.
+border overlay is visible throughout the animation, starting as a tiny speck
+at globe altitude and growing naturally as the camera zooms in. Outputs a
+1080x1920 (9:16) MP4 video ready for Instagram Reels.
 
 Usage:
     # Single town
@@ -13,6 +14,9 @@ Usage:
 
     # Town with disambiguation
     python scripts/generate_flyin.py --town "Lawrence" --county Mercer
+
+    # With alias name
+    python scripts/generate_flyin.py --town "Lawrence" --county Mercer --alias-name "Lawrenceville"
 
     # Custom duration (default 9 seconds)
     python scripts/generate_flyin.py --town "Hoboken" --duration 7

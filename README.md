@@ -25,7 +25,7 @@ ejc-tools/
 │   ├── draft_script.py            # LLM script drafting from research + index
 │   ├── process_audio.py           # Voice cleanup: silence removal + normalization
 │   ├── generate_captions.py       # Whisper-powered SRT caption generation
-│   ├── generate_earth_kml.py      # KML files for Google Earth Studio fly-ins
+│   ├── generate_flyin.py           # Google Earth-style fly-in videos (Cesium.js)
 │   └── utils/
 │       ├── nj_geodata.py          # TIGER/Line shapefile helpers
 │       └── fonts/                 # Montserrat, etc.
@@ -83,6 +83,7 @@ Detailed usage guides and edge cases for each tool:
 | [check_thin_articles.py](docs/check-thin-articles.md) | Flag thin/missing Wikipedia articles for manual research |
 | [generate_cover_photo.py](docs/generate-cover-photo.md) | Generate 9:16 cover photos with text overlays |
 | [generate_selfie_overlay.py](docs/generate-selfie-overlay.md) | Generate selfie cards with title/hashtag overlays |
+| [generate_flyin.py](docs/generate-flyin.md) | Generate Google Earth-style fly-in videos using Cesium.js |
 | [process_audio.py](docs/process-audio.md) | Voice cleanup: silence removal + loudness normalization |
 | [nj_geodata.py](docs/nj-geodata.md) | Shared geographic data utility library |
 
