@@ -77,6 +77,14 @@ python scripts/generate_flyin.py --town "Hoboken" \
   --alias-name "Mile Square City"
 ```
 
+### With subtitle
+
+```bash
+python scripts/generate_flyin.py --town "Bordentown City" \
+  --town-number 130 \
+  --subtitle "Part 1"
+```
+
 ## CLI Arguments
 
 | Argument | Required | Description |
@@ -87,6 +95,7 @@ python scripts/generate_flyin.py --town "Hoboken" \
 | `--output-dir PATH` | No | Output base directory (default: `assets/`) |
 | `--town-number N` | No | Town visit number, used in folder naming and "New Jersey Town #N" overlay |
 | `--alias-name NAME` | No | Alternate name shown as "(aka NAME)" in the town name overlay |
+| `--subtitle TEXT` | No | Free-text line shown below the town name overlay (e.g., "Part 1") |
 | `--duration SECONDS` | No | Animation duration (default from config: 9s). All phases scale proportionally. |
 | `--preview` | No | Open the resulting video in the default player |
 | `--no-border` | No | Skip the red border polygon overlay |
@@ -197,6 +206,23 @@ Controls the "(aka …)" line. Each setting inherits its value from the parent `
 | `shadow_distance_px` | *(inherits)* | Drop shadow offset distance |
 | `shadow_angle_deg` | *(inherits)* | Drop shadow direction in degrees |
 
+#### Subtitle sub-element (`overlay.town_name.subtitle`)
+
+Controls the free-text subtitle line (from `--subtitle`). Each setting inherits its value from the parent `overlay.town_name` by default, but can be overridden by setting it directly in this section.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `font_family` | *(inherits)* | Google Fonts family name |
+| `font_size_ratio` | `0.65` | Font size as ratio of the computed town name size |
+| `font_weight` | *(inherits)* | CSS font weight |
+| `font_style` | *(inherits)* | CSS font style (`normal`, `italic`, `oblique`) |
+| `font_color` | *(inherits)* | Text color (hex) |
+| `outline_color` | *(inherits)* | Text outline color (hex) |
+| `outline_size_ratio` | `0.75` | Outline width as ratio of the parent outline size |
+| `shadow_blur_px` | *(inherits)* | Drop shadow blur radius |
+| `shadow_distance_px` | *(inherits)* | Drop shadow offset distance |
+| `shadow_angle_deg` | *(inherits)* | Drop shadow direction in degrees |
+
 ### Overlay: Logo
 
 | Key | Default | Description |
@@ -227,6 +253,7 @@ The fly-in video includes text overlays and a logo that appear over the map anim
   - **County line**: If the same town name exists in multiple counties statewide (e.g., Washington, Franklin), the county name appears on a second line. Font settings configurable independently via `overlay.town_name.county.*` (inherits from parent `town_name` by default)
   - **Font size ratio**: County text defaults to 65% of the computed town name font size
 - **Alias**: If `--alias-name` is provided, "(aka <name>)" appears as an additional line. Font settings configurable independently via `overlay.town_name.alias.*` (inherits from parent `town_name` by default)
+- **Subtitle**: If `--subtitle` is provided, the text appears as-is on an additional line below all others. Font settings configurable independently via `overlay.town_name.subtitle.*` (inherits from parent `town_name` by default)
 
 ### Drop Shadow
 

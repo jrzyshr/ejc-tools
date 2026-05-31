@@ -65,7 +65,8 @@
   }
 
   #townNameOverlay .county-line,
-  #townNameOverlay .alias-line {
+  #townNameOverlay .alias-line,
+  #townNameOverlay .subtitle-line {
     line-height: 1.2;
     /* font-size set dynamically by JS (smaller than town name) */
   }
@@ -89,6 +90,7 @@
   <div class="town-name-line"></div>
   <div class="county-line"></div>
   <div class="alias-line"></div>
+  <div class="subtitle-line"></div>
 </div>
 
 <!-- EJC Logo (visible from start, disappears when town name appears) -->
@@ -574,6 +576,7 @@ function setupOverlays() {
   var tname = cfg.overlayTownName || {};
   var county = tname.county || {};
   var alias = tname.alias || {};
+  var subtitleCfg = tname.subtitle || {};
   var maxWidth = 1000; // 1080 - 80px padding
 
   // ---- Overlay 1: Town number ----
@@ -607,6 +610,7 @@ function setupOverlays() {
   var nameLineEl = nameEl.querySelector('.town-name-line');
   var countyLineEl = nameEl.querySelector('.county-line');
   var aliasLineEl = nameEl.querySelector('.alias-line');
+  var subtitleLineEl = nameEl.querySelector('.subtitle-line');
 
   // Town name line — own font settings
   nameLineEl.style.fontFamily = '"' + (tname.fontFamily || 'Source Sans 3') + '", sans-serif';
@@ -684,6 +688,32 @@ function setupOverlays() {
   } else {
     aliasLineEl.textContent = '';
     aliasLineEl.style.display = 'none';
+  }
+
+  // Subtitle line — free text, no wrapping (rendered as-is)
+  if (cfg.subtitle) {
+    subtitleLineEl.textContent = cfg.subtitle;
+    subtitleLineEl.style.display = 'block';
+    subtitleLineEl.style.fontFamily = '"' + (subtitleCfg.fontFamily || tname.fontFamily || 'Source Sans 3') + '", sans-serif';
+    subtitleLineEl.style.fontWeight = subtitleCfg.fontWeight || tname.fontWeight || 900;
+    subtitleLineEl.style.fontStyle = subtitleCfg.fontStyle || tname.fontStyle || 'normal';
+    subtitleLineEl.style.color = subtitleCfg.fontColor || tname.fontColor || '#FFFFFF';
+
+    var subMaxSize = Math.round(fontSize * (subtitleCfg.fontSizeRatio || 0.65));
+    var subMinSize = Math.round(minSize * (subtitleCfg.fontSizeRatio || 0.65));
+    var subStrokeW = Math.round((tname.outlineSize || 8) * (subtitleCfg.outlineSizeRatio || 0.75));
+    var subSize = autoFitFontSize(cfg.subtitle, subMaxSize, subMinSize, maxWidth,
+                                    subtitleCfg.fontWeight || tname.fontWeight || 900,
+                                    subtitleCfg.fontFamily || tname.fontFamily || 'Source Sans 3',
+                                    subtitleCfg.fontStyle || tname.fontStyle || 'normal');
+    subtitleLineEl.style.fontSize = subSize + 'px';
+    applyTextEffect(subtitleLineEl, subStrokeW, subtitleCfg.outlineColor || tname.outlineColor || '#000000',
+                    subtitleCfg.shadowBlur != null ? subtitleCfg.shadowBlur : (tname.shadowBlur || 0),
+                    subtitleCfg.shadowDistance != null ? subtitleCfg.shadowDistance : (tname.shadowDistance != null ? tname.shadowDistance : 10),
+                    subtitleCfg.shadowAngle != null ? subtitleCfg.shadowAngle : (tname.shadowAngle != null ? tname.shadowAngle : 135));
+  } else {
+    subtitleLineEl.textContent = '';
+    subtitleLineEl.style.display = 'none';
   }
 
   // Start hidden — shown when zoom completes

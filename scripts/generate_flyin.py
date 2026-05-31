@@ -211,7 +211,8 @@ def _load_logo_data_uri():
 
 
 def build_flyin_config(town_row, cfg, token, duration=None, show_border=True,
-                       gdf=None, town_number=None, alias_name=None):
+                       gdf=None, town_number=None, alias_name=None,
+                       subtitle=None):
     """Build the JavaScript config object to inject into the Cesium page."""
     centroid_lng, centroid_lat = get_centroid_wgs84(town_row)
     west, south, east, north = get_bounds_wgs84(town_row)
@@ -234,6 +235,7 @@ def build_flyin_config(town_row, cfg, token, duration=None, show_border=True,
     tname_cfg = overlay_cfg.get("town_name", {})
     county_cfg = tname_cfg.get("county", {})
     alias_cfg = tname_cfg.get("alias", {})
+    subtitle_cfg = tname_cfg.get("subtitle", {})
 
     def _sub_val(sub_cfg, parent_cfg, key, default):
         """Get value from sub-element config, falling back to parent."""
@@ -275,6 +277,7 @@ def build_flyin_config(town_row, cfg, token, duration=None, show_border=True,
         "needCounty": disambig["need_county"],
         "countyName": disambig["county_name"],
         "aliasName": alias_name or "",
+        "subtitle": subtitle or "",
         "logoDataUri": logo_data_uri,
         # Per-overlay config — town number
         "overlayTownNumber": {
@@ -327,6 +330,18 @@ def build_flyin_config(town_row, cfg, token, duration=None, show_border=True,
                 "shadowBlur": _sub_val(alias_cfg, tname_cfg, "shadow_blur_px", 0),
                 "shadowDistance": _sub_val(alias_cfg, tname_cfg, "shadow_distance_px", 10),
                 "shadowAngle": _sub_val(alias_cfg, tname_cfg, "shadow_angle_deg", 135),
+            },
+            "subtitle": {
+                "fontFamily": _sub_val(subtitle_cfg, tname_cfg, "font_family", "Source Sans 3"),
+                "fontSizeRatio": subtitle_cfg.get("font_size_ratio", 0.65),
+                "fontWeight": _sub_val(subtitle_cfg, tname_cfg, "font_weight", 900),
+                "fontStyle": _sub_val(subtitle_cfg, tname_cfg, "font_style", "normal"),
+                "fontColor": _sub_val(subtitle_cfg, tname_cfg, "font_color", "#FFFFFF"),
+                "outlineColor": _sub_val(subtitle_cfg, tname_cfg, "outline_color", "#000000"),
+                "outlineSizeRatio": subtitle_cfg.get("outline_size_ratio", 0.75),
+                "shadowBlur": _sub_val(subtitle_cfg, tname_cfg, "shadow_blur_px", 0),
+                "shadowDistance": _sub_val(subtitle_cfg, tname_cfg, "shadow_distance_px", 10),
+                "shadowAngle": _sub_val(subtitle_cfg, tname_cfg, "shadow_angle_deg", 135),
             },
         },
         # Logo
@@ -478,7 +493,7 @@ def render_flyin(flyin_config, output_path, cfg):
 
 def generate_single(town_name, county=None, output_dir=None, town_number=None,
                     preview=False, duration=None, no_border=False, config=None,
-                    alias_name=None):
+                    alias_name=None, subtitle=None):
     """Generate fly-in video for a single town."""
     cfg = load_config()
     if config:
@@ -503,6 +518,7 @@ def generate_single(town_name, county=None, output_dir=None, town_number=None,
         gdf=gdf,
         town_number=town_number,
         alias_name=alias_name,
+        subtitle=subtitle,
     )
 
     output_path = get_output_path(display_name, town_number, output_dir, cfg)
@@ -588,6 +604,10 @@ def main():
         help="Alternate name for the town, shown as '(aka <name>)' in the overlay",
     )
     parser.add_argument(
+        "--subtitle",
+        help="Free-text line shown below the town name overlay (e.g., 'Part 1')",
+    )
+    parser.add_argument(
         "--duration", type=float,
         help="Animation duration in seconds (default: from config, 9s). "
              "All animation phases scale proportionally.",
@@ -615,6 +635,7 @@ def main():
             duration=args.duration,
             no_border=args.no_border,
             alias_name=args.alias_name,
+            subtitle=args.subtitle,
         )
 
 
