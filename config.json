@@ -115,6 +115,7 @@
       "state_to_town": [44, 72],
       "final_hold": [72, 100]
     },
+    "drift_zoom_pct": 10,
     "border_color": "#FF0000",
     "border_opacity": 0.8,
     "cesium_ion_token_env": "CESIUM_ION_TOKEN",

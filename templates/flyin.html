@@ -462,6 +462,15 @@ function applyAnimationFrame(elapsedMs) {
   var logEnd = Math.log(endAlt);
   var alt = Math.exp(lerp(logStart, logEnd, easedT));
 
+  // After main zoom completes, apply a slow drift zoom for subtle motion
+  var driftPct = cfg.driftZoomPct || 0;
+  if (driftPct > 0 && zoomT >= 1.0) {
+    var driftT = (elapsed - duration * zoomEnd) / (duration * (1 - zoomEnd));
+    driftT = Math.min(Math.max(driftT, 0), 1);
+    var driftEndAlt = endAlt * (1 - driftPct / 100);
+    alt = Math.exp(lerp(logEnd, Math.log(driftEndAlt), driftT));
+  }
+
   viewer.camera.setView({
     destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
     orientation: { heading: 0, pitch: pitchRad, roll: 0 }

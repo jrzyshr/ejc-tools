@@ -111,7 +111,7 @@ The animation consists of four phases, each defined as a percentage of the total
 | Globe hold | Slow drift centering on eastern US | 0–11% | 0–1.0s | 0–0.7s | 0–1.3s |
 | Globe → state | Zoom from globe to NJ state level | 11–44% | 1.0–4.0s | 0.7–2.6s | 1.3–5.3s |
 | State → town | Zoom from state to town level | 44–72% | 4.0–6.5s | 2.6–4.3s | 5.3–8.6s |
-| Final hold | Hold framed view with border | 72–100% | 6.5–9.0s | 4.3–6.0s | 8.6–12.0s |
+| Final hold | Hold framed view with border + slow drift zoom | 72–100% | 6.5–9.0s | 4.3–6.0s | 8.6–12.0s |
 
 Phase percentages are configurable in `config.json` under `flyin.phases_pct`.
 
@@ -130,6 +130,7 @@ Settings are read from the `flyin` section of `config.json`:
 | `phases_pct` | See above | Phase timing as percentage ranges |
 | `border_color` | `#FF0000` | Border polygon color (hex) |
 | `border_opacity` | `0.8` | Border polygon opacity (0–1) |
+| `drift_zoom_pct` | `10` | Percentage of end altitude to continue zooming during final hold (0 = static) |
 | `cesium_ion_token_env` | `CESIUM_ION_TOKEN` | Environment variable name for the token |
 | `output_filename` | `flyin.mp4` | Output filename within the town's asset folder |
 

@@ -268,6 +268,7 @@ def build_flyin_config(town_row, cfg, token, duration=None, show_border=True,
         "cameraPitchDeg": cfg.get("camera_pitch_degrees", -30),
         "borderColor": cfg.get("border_color", "#FF0000"),
         "borderOpacity": cfg.get("border_opacity", 0.8),
+        "driftZoomPct": cfg.get("drift_zoom_pct", 10),
         "showBorder": show_border,
         # Overlay fields
         "townNumber": town_number or "",
